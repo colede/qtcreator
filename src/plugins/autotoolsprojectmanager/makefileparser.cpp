@@ -37,23 +37,45 @@
 #include <QDir>
 #include <QFileInfoList>
 #include <QMutexLocker>
+#include <QDebug>
 
 using namespace AutotoolsProjectManager::Internal;
 
 MakefileParser::MakefileParser(const QString &makefile) :
     QObject(),
+
     m_success(false),
     m_cancel(false),
     m_mutex(),
+    m_rootpath(),
     m_makefile(makefile),
     m_executable(),
     m_sources(),
     m_makefiles(),
+    m_includefiles(),
     m_includePaths(),
     m_line(),
     m_textStream()
 {
 }
+
+MakefileParser::MakefileParser(const QStringList includefiles, const QString rootpath) :
+    QObject(),
+    m_success(false),
+    m_cancel(false),
+    m_mutex(),
+    m_rootpath(rootpath),
+    m_makefile(),
+    m_executable(),
+    m_sources(),
+    m_makefiles(includefiles),
+    m_includefiles(),
+    m_includePaths(),
+    m_line(),
+    m_textStream()
+{
+}
+
 
 MakefileParser::~MakefileParser()
 {
@@ -71,6 +93,8 @@ bool MakefileParser::parse()
     m_sources.clear();
     m_makefiles.clear();
 
+
+
     QFile *file = new QFile(m_makefile);
     if (!file->open(QIODevice::ReadOnly | QIODevice::Text)) {
         qWarning("%s: %s", qPrintable(m_makefile), qPrintable(file->errorString()));
@@ -80,6 +104,8 @@ bool MakefileParser::parse()
 
     QFileInfo info(m_makefile);
     m_makefiles.append(info.fileName());
+    QString path = info.absolutePath();
+    path.append(QLatin1Char('/'));
 
     emit status(tr("Parsing %1 in directory %2").arg(info.fileName()).arg(info.absolutePath()));
 
@@ -93,14 +119,104 @@ bool MakefileParser::parse()
         case BuiltSources: break; // TODO: Add to m_sources?
         case Sources: parseSources(); break;
         case SubDirs: parseSubDirs(); break;
+        case Includes: followIncludes(); break;
         case Undefined:
         default: break;
         }
     } while (!m_line.isNull());
 
+    //for the m_includefiles, I want to search each of them for _SOURCES and add those to m_sources, and look for more recursive includes
+    if(!m_includefiles.isEmpty())
+    {
+
+
+        QStringList::iterator it = m_includefiles.begin();
+        while (it != m_includefiles.end()) {
+            *it = path + *it;
+            ++it;
+        }
+        MakefileParser includeParser(m_includefiles, path);
+        m_sources.append(includeParser.recurseSources());
+
+    }
+    QStringList headerList = addAllHeaders(info.absolutePath());
+    //subtract out directory
+    if(!headerList.isEmpty())
+    {
+        QString tmp;
+        QStringList::iterator it = headerList.begin();
+        while (it != headerList.end()) {
+            tmp = *it;
+            tmp.remove(path, Qt::CaseInsensitive);
+            *it = tmp;
+            ++it;
+        }
+
+    }
+    m_sources.append(headerList);
+
+    m_sources.removeDuplicates();
+
     parseIncludePaths();
 
     return m_success;
+}
+
+QStringList MakefileParser::recurseSources()
+{
+
+    m_mutex.lock();
+    m_cancel = false;
+    m_mutex.unlock(),
+
+    m_success = true;
+    m_executable.clear();
+    m_sources.clear();
+
+    if(!m_makefiles.isEmpty())
+    {
+        QStringList::iterator it = m_makefiles.begin();
+        while (it != m_makefiles.end()) {
+            //check each one of the include files for sources or more includefiles
+            m_makefile = *it;
+            QFile *file = new QFile(m_makefile);
+            if (!file->open(QIODevice::ReadOnly | QIODevice::Text)) {
+                qWarning("%s: %s", qPrintable(m_makefile), qPrintable(file->errorString()));
+                delete file;
+                return QStringList();
+            }
+
+            QFileInfo info(m_makefile);
+            emit status(tr("Parsing %1 in directory %2").arg(info.fileName()).arg(info.absolutePath()));
+
+            m_textStream.setDevice(file);
+            do {
+                m_line = m_textStream.readLine();
+                switch (topTarget()) {
+                case Sources: parseSources(); break;
+                case Includes: followIncludes(); break;
+                case Undefined:
+                default: break;
+                }
+            } while (!m_line.isNull());
+
+            ++it;
+        }//end of iterator
+
+        if(!m_includefiles.isEmpty())
+        {
+            QStringList::iterator iit = m_includefiles.begin();
+            while (iit != m_includefiles.end()) {
+                *iit = m_rootpath + *iit;
+                ++iit;
+            }
+            MakefileParser includeParser(m_includefiles, m_rootpath);
+            m_sources.append(includeParser.recurseSources());
+        }
+
+    }
+    return sources();
+
 }
 
 QStringList MakefileParser::sources() const
@@ -156,6 +272,9 @@ MakefileParser::TopTarget MakefileParser::topTarget() const
 
     if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
         return Undefined;
+    if(line.startsWith(QLatin1String("include "))) //notice the space
+        return Includes;
+
 
     const QString id = parseIdentifierBeforeAssign(line);
     if (id.isEmpty())
@@ -171,7 +290,6 @@ MakefileParser::TopTarget MakefileParser::topTarget() const
         return SubDirs;
     if (id.endsWith(QLatin1String("_SOURCES")))
         return Sources;
-
     return Undefined;
 }
 
@@ -196,8 +314,9 @@ void MakefileParser::parseSources()
 
     // Skip parsing of Makefile.am for getting the sub directories,
     // as variables have been used. As fallback all sources will be added.
-    if (hasVariables)
-        addAllSources();
+
+//    if (hasVariables)//TODO need to either ignore the $variables, or make addAllSources do something different
+//        addAllSources();
 
     // Duplicates might be possible in combination with 'AM_DEFAULT_SOURCE_EXT ='
     m_sources.removeDuplicates();
@@ -229,6 +348,14 @@ void MakefileParser::parseDefaultSourceExtensions()
 
     // Duplicates might be possible in combination with '_SOURCES ='
     m_sources.removeDuplicates();
+}
+
+void MakefileParser::followIncludes()
+{
+    QTC_ASSERT(m_line.contains(QLatin1String("include ")), return);
+    m_includefiles.append(includeValues());
+
+
 }
 
 void MakefileParser::parseSubDirs()
@@ -353,6 +480,22 @@ QStringList MakefileParser::directorySources(const QString &directory,
     }
 
     return list;
+}
+
+QStringList MakefileParser::includeValues()
+{
+
+    const int index = m_line.indexOf(QLatin1Char(' '));
+    if (index < 0) {
+        m_success = false;
+        return QStringList();
+    }
+    m_line.remove(0, index + 1); // remove the 'include ' prefix
+    m_line = m_line.simplified();
+    // Get all values of a line separated by spaces.
+    QStringList lineValues = m_line.split(QLatin1Char(' '), QString::SkipEmptyParts);
+
+    return lineValues;
 }
 
 QStringList MakefileParser::targetValues(bool *hasVariables)
@@ -503,6 +646,40 @@ void MakefileParser::addAllSources()
     QFileInfo info(m_makefile);
     m_sources.append(directorySources(info.absolutePath(), extensions));
     m_sources.removeDuplicates();
+}
+
+QStringList MakefileParser::addAllHeaders(const QString &directory)
+{
+
+    QStringList extensions;
+    extensions << QLatin1String(".h")
+               << QLatin1String(".hh")
+               << QLatin1String(".hg")
+               << QLatin1String(".hxx")
+               << QLatin1String(".hpp");
+
+    QDir dir(directory);
+    dir.setFilter(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+    QStringList list;
+
+    const QFileInfoList infos = dir.entryInfoList();
+    foreach (const QFileInfo& info, infos) {
+        // Check whether the file matches to an extension
+        if (info.isDir()) {
+            // Append recursively sources from the sub directory
+           list.append(addAllHeaders(info.absoluteFilePath()));
+        } else {
+            foreach (const QString& extension, extensions) {
+                if (info.fileName().endsWith(extension)) {
+                    list.append(info.absoluteFilePath());
+                    break;
+                }
+            }
+        }
+    }
+
+    return list;
+
 }
 
 void MakefileParser::parseIncludePaths()

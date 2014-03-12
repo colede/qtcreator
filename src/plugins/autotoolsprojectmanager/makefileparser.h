@@ -61,6 +61,12 @@ public:
      */
     MakefileParser(const QString &makefile);
 
+    /**
+     * @brief MakefileParser
+     * @param includefiles
+     */
+    MakefileParser(const QStringList includefiles, const QString rootpath);
+
     ~MakefileParser();
 
     /**
@@ -70,6 +76,11 @@ public:
      *         the makefile could not be opened.
      */
     bool parse();
+
+    /**
+     * @brief MakefileParser::recurseSources
+     */
+    QStringList recurseSources();
 
     /**
      * @return List of sources that are set for the _SOURCES target.
@@ -144,7 +155,8 @@ private:
         BinPrograms,
         BuiltSources,
         Sources,
-        SubDirs
+        SubDirs,
+        Includes
     };
 
     TopTarget topTarget() const;
@@ -169,6 +181,11 @@ private:
     void parseDefaultSourceExtensions();
 
     /**
+     * Trying to parse included makefile.am type of files.
+     */
+    void followIncludes();
+
+    /**
      * Parses all sub directories specified by the SUBDIRS target and
      * adds the found sources to the m_sources list. The found makefiles
      * get added to the m_makefiles list.
@@ -181,6 +198,9 @@ private:
      */
     QStringList directorySources(const QString &directory,
                                  const QStringList &extensions);
+
+    QStringList includeValues();
+
 
     /**
      * Helper function for all parse-functions. Returns each value of a target as string in
@@ -209,6 +229,11 @@ private:
      * failed because variables (e.g. $(test)) have been used.
      */
     void addAllSources();
+
+    /**
+     * @brief MakefileParser::addAllHeaders
+     */
+    QStringList addAllHeaders(const QString &directory);
 
     /**
      * Adds all include paths to m_includePaths. TODO: Currently this is done
@@ -262,11 +287,12 @@ private:
 
     bool m_cancel;              ///< True, if the parsing should be cancelled.
     mutable QMutex m_mutex;     ///< Mutex to protect m_cancel.
-
+    QString m_rootpath;         ///< The top level makefile's rooth path (includes reference from the top)
     QString m_makefile;         ///< Filename of the makefile
     QString m_executable;       ///< Return value for MakefileParser::executable()
     QStringList m_sources;      ///< Return value for MakefileParser::sources()
     QStringList m_makefiles;    ///< Return value for MakefileParser::makefiles()
+    QStringList m_includefiles; ///< Additional .am files including from root.
     QStringList m_includePaths; ///< Return value for MakefileParser::includePaths()
     QByteArray m_defines;       ///< Return value for MakefileParser::defines()
     QStringList m_cflags;       ///< Return value for MakefileParser::cflags()
