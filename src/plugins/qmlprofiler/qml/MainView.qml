@@ -38,12 +38,8 @@ Rectangle {
 
     property int singleRowHeight: 30
 
-    property int eventCount: 0
-
     property alias selectionLocked : view.selectionLocked
     signal updateLockButton
-    property alias selectedItem: view.selectedItem
-    signal selectedEventChanged(int eventId)
     property bool lockItemSelection : false
 
     property real mainviewTimePerPixel : 0
@@ -62,11 +58,7 @@ Rectangle {
 
     signal changeToolTip(string text)
 
-    property bool recordingEnabled: false
-    property bool appKilled : false
-
-    property date recordingStartDate
-    property real elapsedTime
+    color: "#dcdcdc"
 
     // ***** connections with external objects
     Connections {
@@ -78,8 +70,12 @@ Rectangle {
             mainviewTimePerPixel = Math.abs(endTime - startTime) / root.width;
 
             backgroundMarks.updateMarks(startTime, endTime);
-            view.updateFlickRange(startTime, endTime);
-            flick.setContentWidth();
+            view.startTime = startTime;
+            view.endTime = endTime;
+            view.updateWindow();
+        }
+        onWindowChanged: {
+            view.updateWindow();
         }
     }
 
@@ -89,16 +85,14 @@ Rectangle {
         onStateChanged: {
             // Clear if model is empty.
             if (qmlProfilerModelProxy.getState() === 0)
-                root.clearAll();
+                root.clear();
         }
         onDataAvailable: {
             view.clearData();
-            zoomControl.setRange(0,0);
-            view.visible = true;
-            view.requestPaint();
             zoomControl.setRange(qmlProfilerModelProxy.traceStartTime(),
                                  qmlProfilerModelProxy.traceStartTime() +
                                  qmlProfilerModelProxy.traceDuration()/10);
+            view.requestPaint();
         }
     }
 
@@ -113,24 +107,18 @@ Rectangle {
         }
     }
 
-    function clearData() {
+    function clear() {
+        flick.contentY = 0;
+        flick.contentX = 0;
+        flick.contentWidth = 0;
         view.clearData();
-        appKilled = false;
-        eventCount = 0;
+        view.startTime = view.endTime = 0;
         hideRangeDetails();
         selectionRangeMode = false;
         updateRangeButton();
         zoomControl.setRange(0,0);
-    }
-
-    function clearDisplay() {
-        clearData();
-        view.visible = false;
-    }
-
-    function clearAll() {
-        clearDisplay();
-        elapsedTime = 0;
+        zoomSlider.externalUpdate = true;
+        zoomSlider.value = zoomSlider.minimumValue;
     }
 
     function nextEvent() {
@@ -151,7 +139,7 @@ Rectangle {
         zoomControl.setRange(newStart, newStart + windowLength);
     }
 
-    function recenterOnItem( modelIndex, itemIndex )
+    function recenterOnItem(modelIndex, itemIndex)
     {
         if (itemIndex === -1)
             return;
@@ -162,7 +150,6 @@ Rectangle {
             recenter((qmlProfilerModelProxy.getStartTime(modelIndex, itemIndex) +
                       qmlProfilerModelProxy.getEndTime(modelIndex, itemIndex)) / 2);
         }
-
     }
 
     function hideRangeDetails() {
@@ -175,30 +162,22 @@ Rectangle {
         rangeDetails.isBindingLoop = false;
     }
 
-    function selectNextByHash(hash) {
-        var eventId = qmlProfilerModelProxy.getEventIdForHash(hash);
-        if (eventId !== -1) {
-            selectNextById(eventId);
-        }
-    }
-
-    function selectNextById(eventId)
+    function selectById(eventId)
     {
+        if (eventId === -1 ||
+                eventId === qmlProfilerModelProxy.getEventId(view.selectedModel, view.selectedItem))
+            return;
+
         // this is a slot responding to events from the other pane
         // which tracks only events from the basic model
         if (!lockItemSelection) {
             lockItemSelection = true;
             var modelIndex = qmlProfilerModelProxy.basicModelIndex();
-            var itemIndex = view.nextItemFromId( modelIndex, eventId );
+            var itemIndex = view.nextItemFromId(modelIndex, eventId);
             // select an item, lock to it, and recenter if necessary
-            if (view.selectedItem != itemIndex || view.selectedModel != modelIndex) {
-                view.selectedModel = modelIndex;
-                view.selectedItem = itemIndex;
-                if (itemIndex !== -1) {
-                    view.selectionLocked = true;
-                    recenterOnItem(modelIndex, itemIndex);
-                }
-            }
+            view.selectFromId(modelIndex, itemIndex); // triggers recentering
+            if (itemIndex !== -1)
+                view.selectionLocked = true;
             lockItemSelection = false;
         }
     }
@@ -206,185 +185,31 @@ Rectangle {
     // ***** slots
     onSelectionRangeModeChanged: {
         selectionRangeControl.enabled = selectionRangeMode;
-        selectionRange.reset(selectionRangeMode);
+        selectionRange.reset();
     }
 
     onSelectionLockedChanged: {
         updateLockButton();
     }
 
-    onSelectedItemChanged: {
-        if (selectedItem != -1 && !lockItemSelection) {
-            lockItemSelection = true;
-            // update in other views
-            var eventLocation = qmlProfilerModelProxy.getEventLocation(view.selectedModel, view.selectedItem);
-            gotoSourceLocation(eventLocation.file, eventLocation.line, eventLocation.column);
-            lockItemSelection = false;
-        }
-    }
-
-    onRecordingEnabledChanged: {
-        if (recordingEnabled) {
-            recordingStartDate = new Date();
-            elapsedTime = 0;
-        } else {
-            elapsedTime = (new Date() - recordingStartDate)/1000.0;
-        }
-    }
-
     Flickable {
-        id: vertflick
+        id: labelsflick
         flickableDirection: Flickable.VerticalFlick
-        anchors.fill: parent
-        clip: true
-        contentHeight: labels.height
-        boundsBehavior: Flickable.StopAtBounds
+        interactive: false
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        width: labels.width
+        contentY: flick.contentY
 
-        // ScrollView will try to deinteractivate it. We don't want that
-        // as the horizontal flickable is interactive, too. We do occasionally
-        // switch to non-interactive ourselves, though.
-        property bool stayInteractive: true
-        onInteractiveChanged: interactive = stayInteractive
-        onStayInteractiveChanged: interactive = stayInteractive
-
-        // ***** child items
-        TimeMarks {
-            id: backgroundMarks
-            y: vertflick.contentY
-            height: vertflick.height
-            width: root.width - labels.width
-            anchors.left: labels.right
-        }
-
-        Flickable {
-            function setContentWidth() {
-                var duration = Math.abs(zoomControl.endTime() - zoomControl.startTime());
-                if (duration > 0)
-                    contentWidth = qmlProfilerModelProxy.traceDuration() * width / duration;
-            }
-
-            id: flick
-            anchors.top: parent.top
-            anchors.topMargin: labels.y
-            anchors.right: parent.right
-            anchors.left: labels.right
-            contentWidth: 0
-            height: labels.height + labelsTail.height
-            flickableDirection: Flickable.HorizontalFlick
-            boundsBehavior: Flickable.StopAtBounds
-
-            onContentXChanged: view.updateZoomControl()
-            onWidthChanged: setContentWidth()
-
-            clip:true
-
-            SelectionRange {
-                id: selectionRange
-                visible: root.selectionRangeMode
-                height: parent.height
-                z: 2
-            }
-
-            TimelineRenderer {
-                id: view
-
-                profilerModelProxy: qmlProfilerModelProxy
-
-                x: flick.contentX
-                y: vertflick.contentY
-                width: flick.width
-                height: vertflick.height
-
-                onEndTimeChanged: requestPaint()
-                onYChanged: requestPaint()
-                onHeightChanged: requestPaint()
-
-                function updateZoomControl() {
-                    var newStartTime = Math.round(flick.contentX * (endTime - startTime) / flick.width) +
-                            qmlProfilerModelProxy.traceStartTime();
-                    if (Math.abs(newStartTime - startTime) > 1) {
-                        var newEndTime = Math.round((flick.contentX + flick.width) *
-                                                    (endTime - startTime) /
-                                                    flick.width) +
-                                                    qmlProfilerModelProxy.traceStartTime();
-                        zoomControl.setRange(newStartTime, newEndTime);
-                    }
-                }
-
-                function updateFlickRange(start, end) {
-                    if (start !== startTime || end !== endTime) {
-                        startTime = start;
-                        endTime = end;
-                        var newStartX = (startTime - qmlProfilerModelProxy.traceStartTime()) *
-                                flick.width / (endTime-startTime);
-                        if (isFinite(newStartX) && Math.abs(newStartX - flick.contentX) >= 1)
-                            flick.contentX = newStartX;
-                    }
-                }
-
-                onSelectedItemChanged: {
-                    if (selectedItem !== -1) {
-                        // display details
-                        rangeDetails.showInfo(qmlProfilerModelProxy.getEventDetails(selectedModel, selectedItem));
-                        rangeDetails.setLocation(qmlProfilerModelProxy.getEventLocation(selectedModel, selectedItem));
-
-                        // center view (horizontally)
-                        var windowLength = view.endTime - view.startTime;
-                        var eventStartTime = qmlProfilerModelProxy.getStartTime(selectedModel, selectedItem);
-                        var eventEndTime = eventStartTime +
-                                qmlProfilerModelProxy.getDuration(selectedModel, selectedItem);
-
-                        if (eventEndTime < view.startTime || eventStartTime > view.endTime) {
-                            var center = (eventStartTime + eventEndTime)/2;
-                            var from = Math.min(qmlProfilerModelProxy.traceEndTime()-windowLength,
-                                                Math.max(0, Math.floor(center - windowLength/2)));
-
-                            zoomControl.setRange(from, from + windowLength);
-
-                        }
-                    } else {
-                        root.hideRangeDetails();
-                    }
-                }
-
-                onItemPressed: {
-                    var location = qmlProfilerModelProxy.getEventLocation(modelIndex, pressedItem);
-                    if (location.hasOwnProperty("file")) // not empty
-                        root.gotoSourceLocation(location.file, location.line, location.column);
-                }
-
-             // hack to pass mouse events to the other mousearea if enabled
-                startDragArea: selectionRange.ready ? selectionRange.getLeft() : -flick.contentX
-                endDragArea: selectionRange.ready ? selectionRange.getRight() : -flick.contentX-1
-            }
-            MouseArea {
-                id: selectionRangeControl
-                enabled: false
-                width: flick.width
-                height: flick.height
-                x: flick.contentX
-                hoverEnabled: enabled
-                z: 2
-
-                onReleased:  {
-                    selectionRange.releasedOnCreation();
-                }
-                onPressed:  {
-                    selectionRange.pressedOnCreation();
-                }
-                onCanceled: {
-                    selectionRange.releasedOnCreation();
-                }
-                onPositionChanged: {
-                    selectionRange.movedOnCreation();
-                }
-            }
-        }
+        // reserve some more space than needed to prevent weird effects when resizing
+        contentHeight: labels.height + height
 
         Rectangle {
             id: labels
+            anchors.left: parent.left
             width: 150
-            color: "#dcdcdc"
+            color: root.color
             height: col.height
 
             property int rowCount: qmlProfilerModelProxy.categoryCount();
@@ -397,33 +222,179 @@ Rectangle {
                 }
             }
         }
+    }
 
-        Rectangle {
-            id: labelsTail
-            anchors.top: labels.bottom
-            height: Math.max(0, vertflick.height - labels.height)
-            width: labels.width
-            color: labels.color
+    // border between labels and timeline
+    Rectangle {
+        id: labelsborder
+        anchors.left: labelsflick.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 1
+        color: "#858585"
+    }
+
+    Flickable {
+        id: flick
+        contentHeight: labels.height
+        contentWidth: 0
+        flickableDirection: Flickable.HorizontalAndVerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        clip:true
+
+        // ScrollView will try to deinteractivate it. We don't want that
+        // as the horizontal flickable is interactive, too. We do occasionally
+        // switch to non-interactive ourselves, though.
+        property bool stayInteractive: true
+        onInteractiveChanged: interactive = stayInteractive
+        onStayInteractiveChanged: interactive = stayInteractive
+
+        onContentXChanged: view.updateZoomControl()
+        onWidthChanged: {
+            var duration = Math.abs(zoomControl.endTime() - zoomControl.startTime());
+            if (duration > 0)
+                contentWidth = zoomControl.windowLength() * width / duration;
         }
 
-        // Gradient borders
-        VerticalGradientBorder {
-            anchors.left: labels.right
-            anchors.top: labels.top
-            anchors.bottom: labelsTail.bottom
-            leftColor: "#00000000"
-            rightColor: "#86000000"
+        // ***** child items
+        TimeMarks {
+            id: backgroundMarks
+            y: flick.contentY
+            x: flick.contentX
+            height: flick.height
+            width: scroller.width
+        }
+
+        SelectionRange {
+            id: selectionRange
+            visible: root.selectionRangeMode && creationState !== 0
+            z: 2
+        }
+
+        TimelineRenderer {
+            id: view
+
+            profilerModelProxy: qmlProfilerModelProxy
+
+            x: flick.contentX
+            y: flick.contentY
+
+            // paint "under" the vertical scrollbar, so that it always matches with the timemarks
+            width: scroller.width
+            height: flick.height
+
+            onEndTimeChanged: requestPaint()
+            onYChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            property bool recursionGuard: false
+
+            function updateZoomControl() {
+                // Don't updateZoomControl if we're just updating the flick range, _from_
+                // zoomControl. The other way round is OK. We _want_ the flick range to be updated
+                // on external changes to zoomControl.
+                if (recursionGuard)
+                    return;
+
+                var newStartTime = Math.round(flick.contentX * (endTime - startTime) / flick.width) +
+                                   zoomControl.windowStart();
+                if (Math.abs(newStartTime - startTime) > 1) {
+                    var newEndTime = Math.round((flick.contentX + flick.width) *
+                                                (endTime - startTime) /
+                                                flick.width) + zoomControl.windowStart();
+                    zoomControl.setRange(newStartTime, newEndTime);
+                }
+            }
+
+            function updateWindow() {
+                var duration = zoomControl.duration();
+                if (recursionGuard || duration <= 0)
+                    return;
+
+                recursionGuard = true;
+
+                if (!flick.movingHorizontally) {
+                    // This triggers an unwanted automatic change in contentX. We ignore that by
+                    // checking recursionGuard in this function and in updateZoomControl.
+                    flick.contentWidth = zoomControl.windowLength() * flick.width / duration;
+
+                    var newStartX = (startTime - zoomControl.windowStart()) * flick.width /
+                            duration;
+
+                    if (isFinite(newStartX) && Math.abs(newStartX - flick.contentX) >= 1)
+                        flick.contentX = newStartX;
+                }
+                recursionGuard = false;
+            }
+
+            onSelectionChanged: {
+                if (selectedItem !== -1) {
+                    // display details
+                    rangeDetails.showInfo(qmlProfilerModelProxy.getEventDetails(selectedModel, selectedItem));
+                    rangeDetails.setLocation(qmlProfilerModelProxy.getEventLocation(selectedModel, selectedItem));
+
+                    // center view (horizontally)
+                    recenterOnItem(selectedModel, selectedItem);
+                    if (!lockItemSelection) {
+                        lockItemSelection = true;
+                        // update in other views
+                        var eventLocation = qmlProfilerModelProxy.getEventLocation(
+                                    view.selectedModel, view.selectedItem);
+                        gotoSourceLocation(eventLocation.file, eventLocation.line,
+                                           eventLocation.column);
+                        lockItemSelection = false;
+                    }
+                } else {
+                    root.hideRangeDetails();
+                }
+            }
+
+            onItemPressed: {
+                var location = qmlProfilerModelProxy.getEventLocation(modelIndex, pressedItem);
+                if (location.hasOwnProperty("file")) // not empty
+                    root.gotoSourceLocation(location.file, location.line, location.column);
+            }
+
+         // hack to pass mouse events to the other mousearea if enabled
+            startDragArea: selectionRange.ready ? selectionRange.getLeft() : -flick.contentX
+            endDragArea: selectionRange.ready ? selectionRange.getRight() : -flick.contentX-1
+        }
+        MouseArea {
+            id: selectionRangeControl
+            enabled: false
+            width: flick.width
+            height: flick.height
+            x: flick.contentX
+            y: flick.contentY
+            hoverEnabled: enabled
+            z: 2
+
+            onReleased:  {
+                selectionRange.releasedOnCreation();
+            }
+            onPressed:  {
+                selectionRange.pressedOnCreation();
+            }
+            onCanceled: {
+                selectionRange.releasedOnCreation();
+            }
+            onPositionChanged: {
+                selectionRange.movedOnCreation();
+            }
         }
     }
 
     ScrollView {
-        contentItem: vertflick
-        anchors.fill: parent
+        id: scroller
+        contentItem: flick
+        anchors.left: labelsborder.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
     }
 
     SelectionRangeDetails {
         id: selectionRangeDetails
-        visible: root.selectionRangeMode
+        visible: selectionRange.visible
         startTime: selectionRange.startTimeString
         duration: selectionRange.durationString
         endTime: selectionRange.endTimeString
@@ -446,7 +417,9 @@ Rectangle {
 
         function updateZoomLevel() {
             zoomSlider.externalUpdate = true;
-            zoomSlider.value = Math.pow((view.endTime - view.startTime) / qmlProfilerModelProxy.traceDuration(), 1 / zoomSlider.exponent) * zoomSlider.maximumValue;
+            zoomSlider.value = Math.pow((view.endTime - view.startTime) /
+                                        zoomControl.windowLength(),
+                                        1 / zoomSlider.exponent) * zoomSlider.maximumValue;
         }
 
 
@@ -462,7 +435,7 @@ Rectangle {
             property int minWindowLength: 1e5 // 0.1 ms
 
             onValueChanged: {
-                if (externalUpdate || qmlProfilerModelProxy.traceEndTime() <= qmlProfilerModelProxy.traceStartTime()) {
+                if (externalUpdate || zoomControl.windowEnd() <= zoomControl.windowStart()) {
                     // Zoom range is independently updated. We shouldn't mess
                     // with it here as otherwise we might introduce rounding
                     // or arithmetic errors.
@@ -471,7 +444,7 @@ Rectangle {
                 }
 
                 var windowLength = Math.max(
-                            Math.pow(value / maximumValue, exponent) * qmlProfilerModelProxy.traceDuration(),
+                            Math.pow(value / maximumValue, exponent) * zoomControl.windowLength(),
                             minWindowLength);
 
                 var fixedPoint = (view.startTime + view.endTime) / 2;
@@ -482,25 +455,9 @@ Rectangle {
                         fixedPoint = newFixedPoint;
                 }
 
-                var startTime = Math.max(qmlProfilerModelProxy.traceStartTime(), fixedPoint - windowLength / 2)
+                var startTime = Math.max(zoomControl.windowStart(), fixedPoint - windowLength / 2)
                 zoomControl.setRange(startTime, startTime + windowLength);
             }
         }
-    }
-
-    VerticalGradientBorder {
-        anchors.right: root.right
-        anchors.top: root.top
-        anchors.bottom: root.bottom
-        rightColor: "#00000000"
-        leftColor: "#86000000"
-    }
-
-    HorizontalGradientBorder {
-        anchors.bottom: root.bottom
-        anchors.left: root.left
-        anchors.right: root.right
-        bottomColor: "#00000000"
-        topColor: "#86000000"
     }
 }

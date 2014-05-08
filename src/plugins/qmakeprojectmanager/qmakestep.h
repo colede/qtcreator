@@ -82,6 +82,9 @@ class QMAKEPROJECTMANAGER_EXPORT QMakeStep : public ProjectExplorer::AbstractPro
         DebugLink
     };
 
+    // used in DebuggerRunConfigurationAspect
+    Q_PROPERTY(bool linkQmlDebuggingLibrary READ linkQmlDebuggingLibrary WRITE setLinkQmlDebuggingLibrary NOTIFY linkQmlDebuggingLibraryChanged)
+
 public:
     explicit QMakeStep(ProjectExplorer::BuildStepList *parent);
     virtual ~QMakeStep();
@@ -132,7 +135,6 @@ private:
     QString m_userArgs;
     QmlLibraryLink m_linkQmlDebuggingLibrary;
     bool m_scriptTemplate;
-    QList<ProjectExplorer::Task> m_tasks;
 };
 
 

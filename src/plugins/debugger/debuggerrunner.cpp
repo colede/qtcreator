@@ -40,10 +40,7 @@
 #include "debuggerstringutils.h"
 #include "debuggertooltipmanager.h"
 #include "breakhandler.h"
-
-#ifdef Q_OS_WIN
-#  include "shared/peutils.h"
-#endif
+#include "shared/peutils.h"
 
 #include <projectexplorer/localapplicationrunconfiguration.h> // For LocalApplication*
 #include <projectexplorer/environmentaspect.h> // For the environment
@@ -196,26 +193,28 @@ void DebuggerRunControl::start()
     }
 
     if (d->m_engine->startParameters().startMode == StartInternal) {
+        QStringList unhandledIds;
         foreach (const BreakpointModelId &id, debuggerCore()->breakHandler()->allBreakpointIds()) {
             if (d->m_engine->breakHandler()->breakpointData(id).enabled
-                    && !d->m_engine->acceptsBreakpoint(id)) {
+                    && !d->m_engine->acceptsBreakpoint(id))
+                unhandledIds.append(id.toString());
+        }
+        if (!unhandledIds.isEmpty()) {
+            QString warningMessage =
+                    DebuggerPlugin::tr("Some breakpoints cannot be handled by the debugger "
+                                       "languages currently active, and will be ignored.\n"
+                                       "Affected are breakpoints %1")
+                    .arg(unhandledIds.join(QLatin1String(", ")));
 
-                QString warningMessage =
-                        DebuggerPlugin::tr("Some breakpoints cannot be handled by the debugger "
-                                           "languages currently active, and will be ignored.");
+            debuggerCore()->showMessage(warningMessage, LogWarning);
 
-                debuggerCore()->showMessage(warningMessage, LogWarning);
-
-                static bool checked = true;
-                if (!checked)
-                    break;
+            static bool checked = true;
+            if (checked)
                 CheckableMessageBox::information(Core::ICore::mainWindow(),
                                                  tr("Debugger"),
                                                  warningMessage,
                                                  tr("&Show this message again."),
                                                  &checked, QDialogButtonBox::Ok);
-                break;
-            }
         }
     }
 
@@ -354,7 +353,7 @@ static DebuggerStartParameters localStartParameters(RunConfiguration *runConfigu
 
     if (target) {
         if (const Project *project = target->project()) {
-            sp.projectSourceDirectory = project->projectDirectory();
+            sp.projectSourceDirectory = project->projectDirectory().toString();
             if (const BuildConfiguration *buildConfig = target->activeBuildConfiguration())
                 sp.projectBuildDirectory = buildConfig->buildDirectory().toString();
             sp.projectSourceFiles = project->files(Project::ExcludeGeneratedFiles);
@@ -513,7 +512,7 @@ DebuggerEngine *DebuggerRunControlFactory::createEngine(DebuggerEngineType et,
     default:
         break;
     }
-    *errorMessage = DebuggerPlugin::tr("Unable to create a debugger engine of the type '%1'").
+    *errorMessage = DebuggerPlugin::tr("Unable to create a debugger engine of the type \"%1\"").
                     arg(_(engineTypeName(et)));
     return 0;
 }

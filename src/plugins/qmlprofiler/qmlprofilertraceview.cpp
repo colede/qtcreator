@@ -51,6 +51,7 @@
 #include <QSlider>
 #include <QMenu>
 #include <QQuickItem>
+#include <QApplication>
 
 #include <math.h>
 
@@ -60,13 +61,86 @@ namespace QmlProfiler {
 namespace Internal {
 
 /////////////////////////////////////////////////////////
+ZoomControl::ZoomControl(const QmlProfilerTraceTime *traceTime, QObject *parent) :
+    QObject(parent), m_startTime(traceTime->startTime()), m_endTime(traceTime->endTime()),
+    m_windowStart(traceTime->startTime()), m_windowEnd(traceTime->endTime()),
+    m_traceTime(traceTime), m_windowLocked(false)
+{
+    connect(traceTime, SIGNAL(startTimeChanged(qint64)), this, SLOT(rebuildWindow()));
+    connect(traceTime, SIGNAL(endTimeChanged(qint64)), this, SLOT(rebuildWindow()));
+    connect(&m_timer, SIGNAL(timeout()), this, SLOT(moveWindow()));
+}
+
 void ZoomControl::setRange(qint64 startTime, qint64 endTime)
 {
     if (m_startTime != startTime || m_endTime != endTime) {
+        m_timer.stop();
         m_startTime = startTime;
         m_endTime = endTime;
+        rebuildWindow();
         emit rangeChanged();
     }
+}
+
+void ZoomControl::rebuildWindow()
+{
+    qint64 minDuration = 1; // qMax needs equal data types, so literal 1 won't do
+    qint64 shownDuration = qMax(duration(), minDuration);
+
+    qint64 oldWindowStart = m_windowStart;
+    qint64 oldWindowEnd = m_windowEnd;
+    if (m_traceTime->duration() / shownDuration < MAX_ZOOM_FACTOR) {
+        m_windowStart = m_traceTime->startTime();
+        m_windowEnd = m_traceTime->endTime();
+    } else if (windowLength() / shownDuration > MAX_ZOOM_FACTOR ||
+               windowLength() / shownDuration * 2 < MAX_ZOOM_FACTOR) {
+        qint64 keep = shownDuration * MAX_ZOOM_FACTOR / 2 - shownDuration;
+        m_windowStart = m_startTime - keep;
+        if (m_windowStart < m_traceTime->startTime()) {
+            keep += m_traceTime->startTime() - m_windowStart;
+            m_windowStart = m_traceTime->startTime();
+        }
+
+        m_windowEnd = m_endTime + keep;
+        if (m_windowEnd > m_traceTime->endTime()) {
+            m_windowStart = qMax(m_traceTime->startTime(),
+                                 m_windowStart - m_windowEnd - m_traceTime->endTime());
+            m_windowEnd = m_traceTime->endTime();
+        }
+    } else {
+        m_timer.start(500);
+    }
+    if (oldWindowStart != m_windowStart || oldWindowEnd != m_windowEnd)
+        emit windowChanged();
+}
+
+void ZoomControl::moveWindow()
+{
+    if (m_windowLocked)
+        return;
+    m_timer.stop();
+
+    qint64 offset = (m_endTime - m_windowEnd + m_startTime - m_windowStart) / 2;
+    if (offset == 0 || (offset < 0 && m_windowStart == m_traceTime->startTime()) ||
+            (offset > 0 && m_windowEnd == m_traceTime->endTime())) {
+        return;
+    } else if (offset > duration()) {
+        offset = (offset + duration()) / 2;
+    } else if (offset < -duration()) {
+        offset = (offset - duration()) / 2;
+    }
+    m_windowStart += offset;
+    if (m_windowStart < m_traceTime->startTime()) {
+        m_windowEnd += m_traceTime->startTime() - m_windowStart;
+        m_windowStart = m_traceTime->startTime();
+    }
+    m_windowEnd += offset;
+    if (m_windowEnd > m_traceTime->endTime()) {
+        m_windowStart -= m_windowEnd - m_traceTime->endTime();
+        m_windowEnd = m_traceTime->endTime();
+    }
+    emit windowChanged();
+    m_timer.start(100);
 }
 
 /////////////////////////////////////////////////////////
@@ -107,27 +181,27 @@ QmlProfilerTraceView::QmlProfilerTraceView(QWidget *parent, Analyzer::IAnalyzerT
 {
     setObjectName(QLatin1String("QML Profiler"));
 
-    d->m_zoomControl = new ZoomControl(this);
+    d->m_zoomControl = new ZoomControl(modelManager->traceTime(), this);
     connect(d->m_zoomControl, SIGNAL(rangeChanged()), this, SLOT(updateRange()));
 
     QVBoxLayout *groupLayout = new QVBoxLayout;
     groupLayout->setContentsMargins(0, 0, 0, 0);
     groupLayout->setSpacing(0);
 
-    d->m_mainView = new QQuickView();
+    d->m_mainView = new QmlProfilerQuickView(this);
     d->m_mainView->setResizeMode(QQuickView::SizeRootObjectToView);
     QWidget *mainViewContainer = QWidget::createWindowContainer(d->m_mainView);
     mainViewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     QHBoxLayout *toolsLayout = new QHBoxLayout;
 
-    d->m_timebar = new QQuickView();
+    d->m_timebar = new QmlProfilerQuickView(this);
     d->m_timebar->setResizeMode(QQuickView::SizeRootObjectToView);
     QWidget *timeBarContainer = QWidget::createWindowContainer(d->m_timebar);
     timeBarContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     timeBarContainer->setFixedHeight(24);
 
-    d->m_overview = new QQuickView();
+    d->m_overview = new QmlProfilerQuickView(this);
     d->m_overview->setResizeMode(QQuickView::SizeRootObjectToView);
     QWidget *overviewContainer = QWidget::createWindowContainer(d->m_overview);
     overviewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -156,12 +230,6 @@ QmlProfilerTraceView::QmlProfilerTraceView(QWidget *parent, Analyzer::IAnalyzerT
                                                      d->m_modelProxy);
 
     d->m_profilerState = profilerState;
-    connect(d->m_profilerState, SIGNAL(stateChanged()),
-            this, SLOT(profilerStateChanged()));
-    connect(d->m_profilerState, SIGNAL(clientRecordingChanged()),
-            this, SLOT(clientRecordingChanged()));
-    connect(d->m_profilerState, SIGNAL(serverRecordingChanged()),
-            this, SLOT(serverRecordingChanged()));
 
     // Minimum height: 5 rows of 20 pixels + scrollbar of 50 pixels + 20 pixels margin
     setMinimumHeight(170);
@@ -191,7 +259,6 @@ void QmlProfilerTraceView::reset()
     connect(rootObject, SIGNAL(updateLockButton()), this, SLOT(updateLockButton()));
     connect(this, SIGNAL(jumpToPrev()), rootObject, SLOT(prevEvent()));
     connect(this, SIGNAL(jumpToNext()), rootObject, SLOT(nextEvent()));
-    connect(rootObject, SIGNAL(selectedEventChanged(int)), this, SIGNAL(selectedEventChanged(int)));
     connect(rootObject, SIGNAL(changeToolTip(QString)), this, SLOT(updateToolTip(QString)));
     connect(this, SIGNAL(enableToolbar(bool)), this, SLOT(setZoomSliderEnabled(bool)));
     connect(this, SIGNAL(showZoomSlider(bool)), this, SLOT(setZoomSliderVisible(bool)));
@@ -225,19 +292,19 @@ QWidget *QmlProfilerTraceView::createToolbar()
 
     QToolButton *buttonPrev= new QToolButton;
     buttonPrev->setIcon(QIcon(QLatin1String(":/qmlprofiler/ico_prev.png")));
-    buttonPrev->setToolTip(tr("Jump to previous event"));
+    buttonPrev->setToolTip(tr("Jump to previous event."));
     connect(buttonPrev, SIGNAL(clicked()), this, SIGNAL(jumpToPrev()));
     connect(this, SIGNAL(enableToolbar(bool)), buttonPrev, SLOT(setEnabled(bool)));
 
     QToolButton *buttonNext= new QToolButton;
     buttonNext->setIcon(QIcon(QLatin1String(":/qmlprofiler/ico_next.png")));
-    buttonNext->setToolTip(tr("Jump to next event"));
+    buttonNext->setToolTip(tr("Jump to next event."));
     connect(buttonNext, SIGNAL(clicked()), this, SIGNAL(jumpToNext()));
     connect(this, SIGNAL(enableToolbar(bool)), buttonNext, SLOT(setEnabled(bool)));
 
     QToolButton *buttonZoomControls = new QToolButton;
     buttonZoomControls->setIcon(QIcon(QLatin1String(":/qmlprofiler/ico_zoom.png")));
-    buttonZoomControls->setToolTip(tr("Show zoom slider"));
+    buttonZoomControls->setToolTip(tr("Show zoom slider."));
     buttonZoomControls->setCheckable(true);
     buttonZoomControls->setChecked(false);
     connect(buttonZoomControls, SIGNAL(toggled(bool)), this, SIGNAL(showZoomSlider(bool)));
@@ -245,7 +312,7 @@ QWidget *QmlProfilerTraceView::createToolbar()
 
     d->m_buttonRange = new QToolButton;
     d->m_buttonRange->setIcon(QIcon(QLatin1String(":/qmlprofiler/ico_rangeselection.png")));
-    d->m_buttonRange->setToolTip(tr("Select range"));
+    d->m_buttonRange->setToolTip(tr("Select range."));
     d->m_buttonRange->setCheckable(true);
     d->m_buttonRange->setChecked(false);
     connect(d->m_buttonRange, SIGNAL(clicked(bool)), this, SLOT(toggleRangeMode(bool)));
@@ -254,7 +321,7 @@ QWidget *QmlProfilerTraceView::createToolbar()
 
     d->m_buttonLock = new QToolButton;
     d->m_buttonLock->setIcon(QIcon(QLatin1String(":/qmlprofiler/ico_selectionmode.png")));
-    d->m_buttonLock->setToolTip(tr("View event information on mouseover"));
+    d->m_buttonLock->setToolTip(tr("View event information on mouseover."));
     d->m_buttonLock->setCheckable(true);
     d->m_buttonLock->setChecked(false);
     connect(d->m_buttonLock, SIGNAL(clicked(bool)), this, SLOT(toggleLockMode(bool)));
@@ -297,33 +364,30 @@ qint64 QmlProfilerTraceView::selectionEnd() const
     return 0;
 }
 
-void QmlProfilerTraceView::clearDisplay()
+void QmlProfilerTraceView::clear()
 {
-    d->m_zoomControl->setRange(0,0);
-    d->m_mainView->rootObject()->setProperty("scrollY", QVariant(0));
-
-    QMetaObject::invokeMethod(d->m_mainView->rootObject(), "clearAll");
-    QMetaObject::invokeMethod(d->m_overview->rootObject(), "clearDisplay");
+    QMetaObject::invokeMethod(d->m_mainView->rootObject(), "clear");
+    QMetaObject::invokeMethod(d->m_overview->rootObject(), "clear");
+    QMetaObject::invokeMethod(d->m_timebar->rootObject(), "clear");
 }
 
-void QmlProfilerTraceView::selectNextEventByHash(const QString &hash)
+void QmlProfilerTraceView::selectByHash(const QString &hash)
 {
     QQuickItem *rootObject = d->m_mainView->rootObject();
 
     if (rootObject)
-        QMetaObject::invokeMethod(rootObject, "selectNextByHash",
-                                  Q_ARG(QVariant,QVariant(hash)));
+        QMetaObject::invokeMethod(rootObject, "selectById",
+                Q_ARG(QVariant,QVariant(d->m_modelProxy->getEventIdForHash(hash))));
 }
 
-void QmlProfilerTraceView::selectNextEventByLocation(const QString &filename, const int line, const int column)
+void QmlProfilerTraceView::selectBySourceLocation(const QString &filename, int line, int column)
 {
     int eventId = d->m_modelProxy->getEventIdForLocation(filename, line, column);
 
     if (eventId != -1) {
         QQuickItem *rootObject = d->m_mainView->rootObject();
         if (rootObject)
-            QMetaObject::invokeMethod(rootObject, "selectNextById",
-                                      Q_ARG(QVariant,QVariant(eventId)));
+            QMetaObject::invokeMethod(rootObject, "selectById", Q_ARG(QVariant,QVariant(eventId)));
     }
 }
 
@@ -404,9 +468,26 @@ void QmlProfilerTraceView::resizeEvent(QResizeEvent *event)
     emit resized();
 }
 
+void QmlProfilerTraceView::mousePressEvent(QMouseEvent *event)
+{
+    d->m_zoomControl->setWindowLocked(true);
+    QWidget::mousePressEvent(event);
+}
+
+void QmlProfilerTraceView::mouseReleaseEvent(QMouseEvent *event)
+{
+    d->m_zoomControl->setWindowLocked(false);
+    QWidget::mouseReleaseEvent(event);
+}
+
 ////////////////////////////////////////////////////////////////
 // Context menu
 void QmlProfilerTraceView::contextMenuEvent(QContextMenuEvent *ev)
+{
+    showContextMenu(ev->globalPos());
+}
+
+void QmlProfilerTraceView::showContextMenu(QPoint position)
 {
     QMenu menu;
     QAction *viewAllAction = 0;
@@ -422,7 +503,7 @@ void QmlProfilerTraceView::contextMenuEvent(QContextMenuEvent *ev)
     if (!d->m_viewContainer->hasValidSelection())
         getLocalStatsAction->setEnabled(false);
 
-    QAction *getGlobalStatsAction = menu.addAction(tr("Reset Events Pane"));
+    QAction *getGlobalStatsAction = menu.addAction(tr("Show Full Range in Events Pane"));
     if (d->m_viewContainer->hasGlobalStats())
         getGlobalStatsAction->setEnabled(false);
 
@@ -431,7 +512,7 @@ void QmlProfilerTraceView::contextMenuEvent(QContextMenuEvent *ev)
         viewAllAction = menu.addAction(tr("Reset Zoom"));
     }
 
-    QAction *selectedAction = menu.exec(ev->globalPos());
+    QAction *selectedAction = menu.exec(position);
 
     if (selectedAction) {
         if (selectedAction == viewAllAction) {
@@ -449,21 +530,6 @@ void QmlProfilerTraceView::contextMenuEvent(QContextMenuEvent *ev)
     }
 }
 
-/////////////////////////////////////////////////
-// Tell QML the state of the profiler
-void QmlProfilerTraceView::setRecording(bool recording)
-{
-    QQuickItem *rootObject = d->m_mainView->rootObject();
-    if (rootObject)
-        rootObject->setProperty("recordingEnabled", QVariant(recording));
-}
-
-void QmlProfilerTraceView::setAppKilled()
-{
-    QQuickItem *rootObject = d->m_mainView->rootObject();
-    if (rootObject)
-        rootObject->setProperty("appKilled",QVariant(true));
-}
 ////////////////////////////////////////////////////////////////
 // Profiler State
 void QmlProfilerTraceView::profilerDataModelStateChanged()
@@ -485,28 +551,40 @@ void QmlProfilerTraceView::profilerDataModelStateChanged()
     }
 }
 
-void QmlProfilerTraceView::profilerStateChanged()
+bool QmlProfilerQuickView::event(QEvent *ev)
 {
-    switch (d->m_profilerState->currentState()) {
-    case QmlProfilerStateManager::AppKilled : {
-        if (d->m_modelManager->state() == QmlProfilerDataState::AcquiringData)
-            setAppKilled();
+    // We assume context menus can only be triggered by mouse press, mouse release, or
+    // pre-synthesized events from the window system.
+
+    bool relayed = false;
+    switch (ev->type()) {
+    case QEvent::ContextMenu:
+        // In the case of mouse clicks the active popup gets automatically closed before they show
+        // up here. That's not necessarily the case with keyboard triggered context menu events, so
+        // we just ignore them if there is a popup already. Also, the event's pos() and globalPos()
+        // don't make much sense in this case, so we just put the menu in the upper left corner.
+        if (QApplication::activePopupWidget() == 0) {
+            ev->accept();
+            parent->showContextMenu(parent->mapToGlobal(QPoint(0,0)));
+            relayed = true;
+        }
+        break;
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease: {
+        QMouseEvent *orig = static_cast<QMouseEvent *>(ev);
+        QCoreApplication::instance()->postEvent(parent->window()->windowHandle(),
+                new QMouseEvent(orig->type(), parent->window()->mapFromGlobal(orig->globalPos()),
+                                orig->button(), orig->buttons(), orig->modifiers()));
+        relayed = true;
         break;
     }
     default:
-        // no special action needed for other states
         break;
     }
-}
 
-void QmlProfilerTraceView::clientRecordingChanged()
-{
-    // nothing yet
-}
-
-void QmlProfilerTraceView::serverRecordingChanged()
-{
-    setRecording(d->m_profilerState->serverRecording());
+    // QQuickView will eat mouse events even if they're not accepted by any QML construct. So we
+    // ignore the return value of event() above.
+    return QQuickView::event(ev) || relayed;
 }
 
 } // namespace Internal

@@ -115,7 +115,7 @@ bool QmlProfilerRunControl::startEngine()
 
     if (startParameters().startMode == StartLocal)
         d->m_noDebugOutputTimer.start();
-    else
+    else if (startParameters().analyzerPort != 0)
         emit processRunning(startParameters().analyzerPort);
 
     d->m_profilerState->setCurrentState(QmlProfilerStateManager::AppRunning);
@@ -148,16 +148,13 @@ void QmlProfilerRunControl::stopEngine()
     }
 }
 
-void QmlProfilerRunControl::notifyRemoteFinished(bool success)
+void QmlProfilerRunControl::notifyRemoteFinished()
 {
     QTC_ASSERT(d->m_profilerState, return);
 
     switch (d->m_profilerState->currentState()) {
     case QmlProfilerStateManager::AppRunning : {
-        if (success)
-            d->m_profilerState->setCurrentState(QmlProfilerStateManager::AppDying);
-        else
-            d->m_profilerState->setCurrentState(QmlProfilerStateManager::AppKilled);
+        d->m_profilerState->setCurrentState(QmlProfilerStateManager::AppDying);
         AnalyzerManager::stopTool();
 
         runControlFinished();
@@ -258,7 +255,9 @@ void QmlProfilerRunControl::processIsRunning(quint16 port)
 {
     d->m_noDebugOutputTimer.stop();
 
-    if (port > 0 && startParameters().analyzerPort != 0)
+    if (port == 0)
+        port = startParameters().analyzerPort;
+    if (port != 0)
         emit processRunning(port);
 }
 

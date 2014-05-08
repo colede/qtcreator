@@ -313,24 +313,6 @@ void FolderNode::setIcon(const QIcon &icon)
     m_icon = icon;
 }
 
-FileNode *FolderNode::findFile(const QString &path)
-{
-    foreach (FileNode *n, fileNodes()) {
-        if (n->path() == path)
-            return n;
-    }
-    return 0;
-}
-
-FolderNode *FolderNode::findSubFolder(const QString &path)
-{
-    foreach (FolderNode *n, subFolderNodes()) {
-        if (n->path() == path)
-            return n;
-    }
-    return 0;
-}
-
 bool FolderNode::addFiles(const QStringList &filePaths, QStringList *notAdded)
 {
     if (projectNode())
@@ -359,10 +341,10 @@ bool FolderNode::renameFile(const QString &filePath, const QString &newFilePath)
     return false;
 }
 
-FolderNode::AddNewInformation FolderNode::addNewInformation(const QStringList &files) const
+FolderNode::AddNewInformation FolderNode::addNewInformation(const QStringList &files, Node *context) const
 {
     Q_UNUSED(files);
-    return AddNewInformation(QFileInfo(path()).fileName(), 100);
+    return AddNewInformation(QFileInfo(path()).fileName(), context == this ? 120 : 100);
 }
 
 /*!
@@ -527,6 +509,23 @@ void FolderNode::removeFolderNodes(const QList<FolderNode*> &subFolders)
         emit watcher->foldersRemoved();
 }
 
+void FolderNode::aboutToChangeShowInSimpleTree()
+{
+    foreach (NodesWatcher *watcher, projectNode()->watchers())
+        emit watcher->aboutToChangeShowInSimpleTree(this);
+}
+
+void FolderNode::showInSimpleTreeChanged()
+{
+    foreach (NodesWatcher *watcher, projectNode()->watchers())
+        emit watcher->showInSimpleTreeChanged(this);
+}
+
+bool FolderNode::showInSimpleTree() const
+{
+    return false;
+}
+
 /*!
   \class ProjectExplorer::VirtualFolderNode
 
@@ -590,18 +589,6 @@ QList<ProjectNode*> ProjectNode::subProjectNodes() const
     return m_subProjectNodes;
 }
 
-void ProjectNode::aboutToChangeHasBuildTargets()
-{
-    foreach (NodesWatcher *watcher, watchers())
-        emit watcher->aboutToChangeHasBuildTargets(this);
-}
-
-void ProjectNode::hasBuildTargetsChanged()
-{
-    foreach (NodesWatcher *watcher, watchers())
-        emit watcher->hasBuildTargetsChanged(this);
-}
-
 /*!
   \function bool ProjectNode::addSubProjects(const QStringList &)
   */
@@ -626,6 +613,16 @@ bool ProjectNode::deploysFolder(const QString &folder) const
 {
     Q_UNUSED(folder);
     return false;
+}
+
+/*!
+  \function bool ProjectNode::runConfigurations() const
+
+  Returns a list of \c RunConfiguration suitable for this node.
+  */
+QList<RunConfiguration *> ProjectNode::runConfigurations() const
+{
+    return QList<RunConfiguration *>();
 }
 
 QList<NodesWatcher*> ProjectNode::watchers() const
@@ -806,6 +803,11 @@ void SessionNode::accept(NodesVisitor *visitor)
     visitor->visitSessionNode(this);
     foreach (ProjectNode *project, m_projectNodes)
         project->accept(visitor);
+}
+
+bool SessionNode::showInSimpleTree() const
+{
+    return true;
 }
 
 QList<ProjectNode*> SessionNode::projectNodes() const

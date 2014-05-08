@@ -32,12 +32,6 @@
 
 #include "utils_global.h"
 
-#include <QProcess> // Q_PID (is PROCESS_INFORMATION*)
-
-QT_BEGIN_NAMESPACE
-class QString;
-QT_END_NAMESPACE
-
 namespace Utils {
 
 // Helper to format a Windows error message, taking the
@@ -50,10 +44,27 @@ QTCREATOR_UTILS_EXPORT QString winGetDLLVersion(WinDLLVersionType t,
                                                 const QString &name,
                                                 QString *errorMessage);
 
-QTCREATOR_UTILS_EXPORT bool winIs64BitSystem();
+QTCREATOR_UTILS_EXPORT bool is64BitWindowsSystem();
 
 // Check for a 64bit binary.
-QTCREATOR_UTILS_EXPORT bool winIs64BitBinary(const QString &binary);
+QTCREATOR_UTILS_EXPORT bool is64BitWindowsBinary(const QString &binary);
+
+//
+// RAII class to temporarily prevent windows crash messages from popping up using the
+// application-global (!) error mode.
+//
+// Useful primarily for QProcess launching, since the setting will be inherited.
+//
+class QTCREATOR_UTILS_EXPORT WindowsCrashDialogBlocker {
+public:
+    WindowsCrashDialogBlocker();
+    ~WindowsCrashDialogBlocker();
+#ifdef Q_OS_WIN
+private:
+    const unsigned int silenceErrorMode;
+    const unsigned int originalErrorMode;
+#endif // Q_OS_WIN
+};
 
 } // namespace Utils
 

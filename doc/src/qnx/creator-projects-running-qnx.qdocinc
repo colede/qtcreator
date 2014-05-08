@@ -7,8 +7,8 @@
         \li Configure the device and specify a connection to it. For more
             information, see \l{Connecting QNX Devices}.
 
-        \li If you are running on a BlackBerry device, create an Application
-            Descriptor File if it does not already exist. For more information, see \l{Deploying Applications to QNX Devices}.
+        \li If you are running on a BlackBerry 10 device, create an Application
+            Descriptor File if it does not already exist. For more information, see \l{Deploying Applications to BlackBerry 10 Devices}.
 
         \li Make sure that your kit has your QNX or BlackBerry 10 device set.
 
@@ -24,7 +24,7 @@
     application views are displayed on the device. Standard output is
     visible in the \QC \gui {Application Output} view.
 
-    \note Debugging is currently only fully supported on Linux and Mac OS.
+    \note Debugging is currently only fully supported on Linux and OS X.
     It is not possible to insert breakpoints during runtime on Windows.
 
     \section2 Troubleshooting Errors

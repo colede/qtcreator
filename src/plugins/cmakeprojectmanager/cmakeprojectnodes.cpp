@@ -37,7 +37,7 @@ CMakeProjectNode::CMakeProjectNode(const QString &fileName)
 {
 }
 
-bool CMakeProjectNode::hasBuildTargets() const
+bool CMakeProjectNode::showInSimpleTree() const
 {
     // TODO
     return true;
@@ -92,10 +92,4 @@ bool CMakeProjectNode::renameFile(const QString &filePath, const QString &newFil
     Q_UNUSED(filePath)
     Q_UNUSED(newFilePath)
     return false;
-}
-
-QList<ProjectExplorer::RunConfiguration *> CMakeProjectNode::runConfigurationsFor(Node *node)
-{
-    Q_UNUSED(node)
-    return QList<ProjectExplorer::RunConfiguration *>();
 }

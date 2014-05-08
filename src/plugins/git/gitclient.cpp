@@ -424,7 +424,8 @@ void GitDiffHandler::collectShowDescription(const QString &id)
 
     m_editorController->clear(m_waitMessage);
     VcsBase::Command *command = new VcsBase::Command(m_gitPath, m_workingDirectory, m_processEnvironment);
-    command->setCodec(Core::EditorManager::defaultTextCodec());
+    command->setCodec(GitPlugin::instance()->gitClient()->encoding(m_workingDirectory,
+                                                                   "i18n.commitEncoding"));
     connect(command, SIGNAL(output(QString)), this, SLOT(slotShowDescriptionReceived(QString)));
     QStringList arguments;
     arguments << QLatin1String("show") << QLatin1String("-s")
@@ -1095,9 +1096,9 @@ VcsBase::VcsBaseEditorWidget *GitClient::findExistingVCSEditor(const char *regis
     return rc;
 }
 
-DiffEditor::DiffEditorDocument *GitClient::createDiffEditor(const QString documentId,
-                                                    const QString &source,
-                                                    const QString &title) const
+DiffEditor::DiffEditorDocument *GitClient::createDiffEditor(const QString &documentId,
+                                                            const QString &source,
+                                                            const QString &title) const
 {
     DiffEditor::DiffEditorDocument *diffEditorDocument = DiffEditor::DiffEditorManager::findOrCreate(documentId, title);
     QTC_ASSERT(diffEditorDocument, return 0);
@@ -1122,25 +1123,22 @@ VcsBase::VcsBaseEditorWidget *GitClient::createVcsEditor(
     QTC_CHECK(!findExistingVCSEditor(registerDynamicProperty, dynamicPropertyValue));
 
     // Create new, set wait message, set up with source and codec
-    Core::IEditor *outputEditor = Core::EditorManager::openEditorWithContents(id, &title,
-                                                                              m_msgWait.toUtf8());
+    Core::IEditor *outputEditor
+            = Core::EditorManager::openEditorWithContents(id, &title, m_msgWait.toUtf8(),
+                                                          (Core::EditorManager::OpenInOtherSplit
+                                                           | Core::EditorManager::NoNewSplits));
     outputEditor->document()->setProperty(registerDynamicProperty, dynamicPropertyValue);
     rc = VcsBase::VcsBaseEditorWidget::getVcsBaseEditor(outputEditor);
     connect(rc, SIGNAL(annotateRevisionRequested(QString,QString,QString,int)),
             this, SLOT(slotBlameRevisionRequested(QString,QString,QString,int)));
     QTC_ASSERT(rc, return 0);
     rc->setSource(source);
-    if (codecType == CodecSource) {
+    if (codecType == CodecSource)
         rc->setCodec(getSourceCodec(source));
-    } else if (codecType == CodecLogOutput) {
-        QString encodingName = readConfigValue(source, QLatin1String("i18n.logOutputEncoding"));
-        if (encodingName.isEmpty())
-            encodingName = QLatin1String("utf-8");
-        rc->setCodec(QTextCodec::codecForName(encodingName.toLocal8Bit()));
-    }
+    else if (codecType == CodecLogOutput)
+        rc->setCodec(encoding(source, "i18n.logOutputEncoding"));
 
     rc->setForceReadOnly(true);
-    Core::EditorManager::activateEditor(outputEditor);
 
     if (configWidget)
         rc->setConfigurationWidget(configWidget);
@@ -1555,12 +1553,8 @@ void GitClient::slotBlameRevisionRequested(const QString &workingDirectory, cons
 
 QTextCodec *GitClient::getSourceCodec(const QString &file) const
 {
-    if (QFileInfo(file).isFile())
-        return VcsBase::VcsBaseEditorWidget::getCodec(file);
-    QString encodingName = readConfigValue(file, QLatin1String("gui.encoding"));
-    if (encodingName.isEmpty())
-        encodingName = QLatin1String("utf-8");
-    return QTextCodec::codecForName(encodingName.toLocal8Bit());
+    return QFileInfo(file).isFile() ? VcsBase::VcsBaseEditorWidget::getCodec(file)
+                                    : encoding(file, "gui.encoding");
 }
 
 void GitClient::blame(const QString &workingDirectory,
@@ -1624,7 +1618,7 @@ QStringList GitClient::setupCheckoutArguments(const QString &workingDirectory,
         return arguments;
 
     if (QMessageBox::question(Core::ICore::mainWindow(), tr("Create Local Branch"),
-                              tr("Would you like to create local branch?"),
+                              tr("Would you like to create a local branch?"),
                               QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
         return arguments;
     }
@@ -1704,11 +1698,7 @@ bool GitClient::synchronousLog(const QString &workingDirectory, const QStringLis
     const bool rc = fullySynchronousGit(workingDirectory, allArguments, &outputText, &errorText,
                                         flags);
     if (rc) {
-        QString encodingName = readConfigValue(workingDirectory, QLatin1String("i18n.logOutputEncoding"));
-        if (encodingName.isEmpty())
-            encodingName = QLatin1String("utf-8");
-        QTextCodec *codec = QTextCodec::codecForName(encodingName.toLocal8Bit());
-        if (codec)
+        if (QTextCodec *codec = encoding(workingDirectory, "i18n.logOutputEncoding"))
             *output = codec->toUnicode(outputText);
         else
             *output = commandOutputFromLocal8Bit(outputText);
@@ -2001,7 +1991,8 @@ bool GitClient::synchronousHeadRefs(const QString &workingDirectory, QStringList
          << QLatin1String("--abbrev=10") << QLatin1String("--dereference");
     QByteArray outputText;
     QByteArray errorText;
-    const bool rc = fullySynchronousGit(workingDirectory, args, &outputText, &errorText);
+    const bool rc = fullySynchronousGit(workingDirectory, args, &outputText, &errorText,
+                                        VcsBasePlugin::SuppressCommandLogging);
     if (!rc) {
         msgCannotRun(args, workingDirectory, errorText, errorMessage);
         return false;
@@ -2051,9 +2042,19 @@ QString GitClient::synchronousTopic(const QString &workingDirectory)
                                    (derefInd == -1) ? -1 : derefInd - remoteStart.size());
         }
     }
+    if (!remoteBranch.isEmpty())
+        return remoteBranch;
 
-    // No tag
-    return remoteBranch.isEmpty() ? tr("Detached HEAD") : remoteBranch;
+    // No tag or remote branch - try git describe
+    QByteArray output;
+    QStringList arguments;
+    arguments << QLatin1String("describe");
+    if (fullySynchronousGit(workingDirectory, arguments, &output, 0, VcsBasePlugin::NoOutput)) {
+        const QString describeOutput = commandOutputFromLocal8Bit(output.trimmed());
+        if (!describeOutput.isEmpty())
+            return describeOutput;
+    }
+    return tr("Detached HEAD");
 }
 
 bool GitClient::synchronousRevParseCmd(const QString &workingDirectory, const QString &ref,
@@ -2330,13 +2331,13 @@ bool GitClient::synchronousForEachRefCmd(const QString &workingDirectory, QStrin
 }
 
 bool GitClient::synchronousRemoteCmd(const QString &workingDirectory, QStringList remoteArgs,
-                                     QString *output, QString *errorMessage)
+                                     QString *output, QString *errorMessage, bool silent)
 {
     remoteArgs.push_front(QLatin1String("remote"));
     QByteArray outputText;
     QByteArray errorText;
-    const bool rc = fullySynchronousGit(workingDirectory, remoteArgs, &outputText, &errorText);
-    if (!rc) {
+    if (!fullySynchronousGit(workingDirectory, remoteArgs, &outputText, &errorText,
+                             silent ? VcsBasePlugin::SuppressCommandLogging : 0)) {
         msgCannotRun(remoteArgs, workingDirectory, errorText, errorMessage);
         return false;
     }
@@ -2351,7 +2352,7 @@ QMap<QString,QString> GitClient::synchronousRemotesList(const QString &workingDi
     QString output;
     QString error;
     QStringList args(QLatin1String("-v"));
-    if (!synchronousRemoteCmd(workingDirectory, args, &output, &error)) {
+    if (!synchronousRemoteCmd(workingDirectory, args, &output, &error, true)) {
         msgCannotRun(error, errorMessage);
         return result;
     }
@@ -2399,9 +2400,9 @@ SubmoduleDataMap GitClient::submoduleList(const QString &workingDirectory)
 
     if (cachedSubmoduleData.contains(workingDirectory))
         return cachedSubmoduleData.value(workingDirectory);
-    QStringList args(QLatin1String("-l"));
 
-    QStringList allConfigs = readConfig(workingDirectory, args).split(QLatin1Char('\n'));
+    QStringList allConfigs = readConfigValue(workingDirectory, QLatin1String("-l"))
+            .split(QLatin1Char('\n'));
     const QString submoduleLineStart = QLatin1String("submodule.");
     foreach (const QString &configLine, allConfigs) {
         if (!configLine.startsWith(submoduleLineStart))
@@ -2780,31 +2781,35 @@ GitClient::CommandInProgress GitClient::checkCommandInProgress(const QString &wo
         return NoCommand;
 }
 
-void GitClient::continueCommandIfNeeded(const QString &workingDirectory)
+void GitClient::continueCommandIfNeeded(const QString &workingDirectory, bool allowContinue)
 {
     CommandInProgress command = checkCommandInProgress(workingDirectory);
+    ContinueCommandMode continueMode;
+    if (allowContinue)
+        continueMode = command == RebaseMerge ? ContinueOnly : SkipIfNoChanges;
+    else
+        continueMode = SkipOnly;
     switch (command) {
     case Rebase:
     case RebaseMerge:
         continuePreviousGitCommand(workingDirectory, tr("Continue Rebase"),
                                    tr("Rebase is in progress. What do you want to do?"),
-                                   tr("Continue"), QLatin1String("rebase"),
-                                   command != RebaseMerge);
+                                   tr("Continue"), QLatin1String("rebase"), continueMode);
         break;
     case Merge:
         continuePreviousGitCommand(workingDirectory, tr("Continue Merge"),
                 tr("You need to commit changes to finish merge.\nCommit now?"),
-                tr("Commit"), QLatin1String("merge"));
+                tr("Commit"), QLatin1String("merge"), continueMode);
         break;
     case Revert:
         continuePreviousGitCommand(workingDirectory, tr("Continue Revert"),
                 tr("You need to commit changes to finish revert.\nCommit now?"),
-                tr("Commit"), QLatin1String("revert"));
+                tr("Commit"), QLatin1String("revert"), continueMode);
         break;
     case CherryPick:
         continuePreviousGitCommand(workingDirectory, tr("Continue Cherry-Picking"),
                 tr("You need to commit changes to finish cherry-picking.\nCommit now?"),
-                tr("Commit"), QLatin1String("cherry-pick"));
+                tr("Commit"), QLatin1String("cherry-pick"), continueMode);
         break;
     default:
         break;
@@ -2814,18 +2819,25 @@ void GitClient::continueCommandIfNeeded(const QString &workingDirectory)
 void GitClient::continuePreviousGitCommand(const QString &workingDirectory,
                                            const QString &msgBoxTitle, QString msgBoxText,
                                            const QString &buttonName, const QString &gitCommand,
-                                           bool requireChanges)
+                                           ContinueCommandMode continueMode)
 {
     bool isRebase = gitCommand == QLatin1String("rebase");
-    bool hasChanges;
-    if (!requireChanges) {
+    bool hasChanges = false;
+    switch (continueMode) {
+    case ContinueOnly:
         hasChanges = true;
-    } else {
+        break;
+    case SkipIfNoChanges:
         hasChanges = gitStatus(workingDirectory, StatusMode(NoUntracked | NoSubmodules))
             == GitClient::StatusChanged;
+        if (!hasChanges)
+            msgBoxText.prepend(tr("No changes found.") + QLatin1Char(' '));
+        break;
+    case SkipOnly:
+        hasChanges = false;
+        break;
     }
-    if (!hasChanges)
-        msgBoxText.prepend(tr("No changes found.") + QLatin1Char(' '));
+
     QMessageBox msgBox(QMessageBox::Question, msgBoxTitle, msgBoxText,
                        QMessageBox::NoButton, Core::ICore::mainWindow());
     if (hasChanges || isRebase)
@@ -2859,21 +2871,6 @@ QString GitClient::extendedShowDescription(const QString &workingDirectory, cons
         modText.insert(lastHeaderLine, QLatin1String("Precedes: ") + precedes + QLatin1Char('\n'));
     if (!follows.isEmpty())
         modText.insert(lastHeaderLine, QLatin1String("Follows: ") + follows + QLatin1Char('\n'));
-    QString moreBranches;
-    QStringList branches = synchronousBranchesForCommit(workingDirectory, commit);
-    const int branchCount = branches.count();
-    // If there are more than 20 branches, list first 10 followed by a hint
-    if (branchCount > 20) {
-        const int leave = 10;
-        //: Displayed after the untranslated message "Branches: branch1, branch2 'and %n more'" in git show.
-        moreBranches = QLatin1Char(' ') + tr("and %n more", 0, branchCount - leave);
-        branches.erase(branches.begin() + leave, branches.end());
-    }
-    if (!branches.isEmpty()) {
-        modText.insert(lastHeaderLine, QLatin1String("Branches: ")
-                       + branches.join(QLatin1String(", ")) + moreBranches
-                       + QLatin1Char('\n'));
-    }
     return modText;
 }
 
@@ -3015,6 +3012,25 @@ QString GitClient::gitBinaryPath(bool *ok, QString *errorMessage) const
     return settings()->gitBinaryPath(ok, errorMessage);
 }
 
+QTextCodec *GitClient::encoding(const QString &workingDirectory, const QByteArray &configVar) const
+{
+    QByteArray codecName = readConfigBytes(workingDirectory, QLatin1String(configVar)).trimmed();
+    // Set default commit encoding to 'UTF-8', when it's not set,
+    // to solve displaying error of commit log with non-latin characters.
+    if (codecName.isEmpty())
+        codecName = "UTF-8";
+    return QTextCodec::codecForName(codecName);
+}
+
+// returns first line from log and removes it
+static QByteArray shiftLogLine(QByteArray &logText)
+{
+    const int index = logText.indexOf('\n');
+    const QByteArray res = logText.left(index);
+    logText.remove(0, index + 1);
+    return res;
+}
+
 bool GitClient::getCommitData(const QString &workingDirectory,
                               QString *commitTemplate,
                               CommitData &commitData,
@@ -3094,31 +3110,27 @@ bool GitClient::getCommitData(const QString &workingDirectory,
         }
     }
 
-    commitData.commitEncoding = readConfigValue(workingDirectory, QLatin1String("i18n.commitEncoding"));
-
-   // Set default commit encoding to 'UTF-8', when it's not set,
-   // to solve displaying error of commit log with non-latin characters.
-    if (commitData.commitEncoding.isEmpty())
-        commitData.commitEncoding = QLatin1String("UTF-8");
+    commitData.commitEncoding = encoding(workingDirectory, "i18n.commitEncoding");
 
     // Get the commit template or the last commit message
     switch (commitData.commitType) {
     case AmendCommit: {
         // Amend: get last commit data as "SHA1<tab>author<tab>email<tab>message".
         QStringList args(QLatin1String("log"));
-        args << QLatin1String("--max-count=1") << QLatin1String("--pretty=format:%h\t%an\t%ae\t%B");
-        QTextCodec *codec = QTextCodec::codecForName(commitData.commitEncoding.toLocal8Bit());
-        const Utils::SynchronousProcessResponse sp = synchronousGit(repoDirectory, args, 0, codec);
-        if (sp.result != Utils::SynchronousProcessResponse::Finished) {
+        args << QLatin1String("--max-count=1") << QLatin1String("--pretty=format:%h\n%an\n%ae\n%B");
+        QByteArray outputText;
+        if (!fullySynchronousGit(repoDirectory, args, &outputText, 0,
+                                 VcsBasePlugin::SuppressCommandLogging)) {
             *errorMessage = tr("Cannot retrieve last commit data of repository \"%1\".").arg(repoDirectory);
             return false;
         }
-        QStringList values = sp.stdOut.split(QLatin1Char('\t'));
-        QTC_ASSERT(values.size() >= 4, return false);
-        commitData.amendSHA1 = values.takeFirst();
-        commitData.panelData.author = values.takeFirst();
-        commitData.panelData.email = values.takeFirst();
-        *commitTemplate = values.join(QLatin1String("\t"));
+        QTextCodec *authorCodec = Utils::HostOsInfo::isWindowsHost()
+                ? QTextCodec::codecForName("UTF-8")
+                : commitData.commitEncoding;
+        commitData.amendSHA1 = QString::fromLatin1(shiftLogLine(outputText));
+        commitData.panelData.author = authorCodec->toUnicode(shiftLogLine(outputText));
+        commitData.panelData.email = authorCodec->toUnicode(shiftLogLine(outputText));
+        *commitTemplate = commitData.commitEncoding->toUnicode(outputText);
         break;
     }
     case SimpleCommit: {
@@ -3204,7 +3216,7 @@ bool GitClient::addAndCommit(const QString &repositoryDirectory,
                 filesToReset.append(newFile);
             }
         } else if (state & UnmergedFile && checked) {
-            QTC_ASSERT(false, continue); // There should not be unmerged files when commiting!
+            QTC_ASSERT(false, continue); // There should not be unmerged files when committing!
         }
 
         if (state == ModifiedFile && checked) {
@@ -3220,7 +3232,7 @@ bool GitClient::addAndCommit(const QString &repositoryDirectory,
         } else if (state == CopiedFile && checked) {
             QTC_ASSERT(false, continue); // only is noticed after adding a new file to the index
         } else if (state == UnmergedFile && checked) {
-            QTC_ASSERT(false, continue); // There should not be unmerged files when commiting!
+            QTC_ASSERT(false, continue); // There should not be unmerged files when committing!
         }
     }
 
@@ -3736,7 +3748,7 @@ bool GitClient::synchronousStashList(const QString &workingDirectory,
     return true;
 }
 
-QString GitClient::readConfig(const QString &workingDirectory, const QStringList &configVar) const
+QByteArray GitClient::readConfigBytes(const QString &workingDirectory, const QString &configVar) const
 {
     QStringList arguments;
     arguments << QLatin1String("config") << configVar;
@@ -3745,16 +3757,22 @@ QString GitClient::readConfig(const QString &workingDirectory, const QStringList
     QByteArray errorText;
     if (!fullySynchronousGit(workingDirectory, arguments, &outputText, &errorText,
                              VcsBasePlugin::SuppressCommandLogging))
-        return QString();
+        return QByteArray();
     if (Utils::HostOsInfo::isWindowsHost())
-        return Utils::SynchronousProcess::normalizeNewlines(QString::fromUtf8(outputText));
-    return commandOutputFromLocal8Bit(outputText);
+        outputText.replace("\r\n", "\n");
+    return outputText;
 }
 
 // Read a single-line config value, return trimmed
 QString GitClient::readConfigValue(const QString &workingDirectory, const QString &configVar) const
 {
-    return readConfig(workingDirectory, QStringList(configVar)).remove(QLatin1Char('\n'));
+    // msysGit always uses UTF-8 for configuration:
+    // https://github.com/msysgit/msysgit/wiki/Git-for-Windows-Unicode-Support#convert-config-files
+    static QTextCodec *codec = Utils::HostOsInfo::isWindowsHost()
+            ? QTextCodec::codecForName("UTF-8")
+            : QTextCodec::codecForLocale();
+    const QByteArray value = readConfigBytes(workingDirectory, configVar).trimmed();
+    return Utils::SynchronousProcess::normalizeNewlines(codec->toUnicode(value));
 }
 
 bool GitClient::cloneRepository(const QString &directory,const QByteArray &url)

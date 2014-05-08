@@ -81,6 +81,7 @@ using namespace Core::Internal;
 SearchResultWidget::SearchResultWidget(QWidget *parent) :
     QWidget(parent),
     m_count(0),
+    m_preserveCaseSupported(true),
     m_isShowingReplaceUI(false),
     m_searchAgainSupported(false)
 {
@@ -90,7 +91,7 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     setLayout(layout);
 
     QFrame *topWidget = new QFrame;
-    QPalette pal = topWidget->palette();
+    QPalette pal;
     pal.setColor(QPalette::Window, QColor(255, 255, 225));
     pal.setColor(QPalette::WindowText, Qt::black);
     topWidget->setPalette(pal);
@@ -103,7 +104,6 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     layout->addWidget(topWidget);
 
     m_messageWidget = new QFrame;
-    pal.setColor(QPalette::Window, QColor(255, 255, 225));
     pal.setColor(QPalette::WindowText, Qt::red);
     m_messageWidget->setPalette(pal);
     m_messageWidget->setFrameStyle(QFrame::Panel | QFrame::Raised);
@@ -147,7 +147,7 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     m_cancelButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     connect(m_cancelButton, SIGNAL(clicked()), this, SLOT(cancel()));
     m_searchAgainButton = new QToolButton(topWidget);
-    m_searchAgainButton->setToolTip(tr("Repeat the search with same parameters"));
+    m_searchAgainButton->setToolTip(tr("Repeat the search with same parameters."));
     m_searchAgainButton->setText(tr("Search again"));
     m_searchAgainButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     m_searchAgainButton->setVisible(false);
@@ -159,7 +159,7 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     m_replaceTextEdit->setEnabled(false);
     m_replaceTextEdit->setTabOrder(m_replaceTextEdit, m_searchResultTreeView);
     m_replaceButton = new QToolButton(topWidget);
-    m_replaceButton->setToolTip(tr("Replace all occurrences"));
+    m_replaceButton->setToolTip(tr("Replace all occurrences."));
     m_replaceButton->setText(tr("Replace"));
     m_replaceButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     m_replaceButton->setEnabled(false);
@@ -295,13 +295,18 @@ QString SearchResultWidget::textToReplace() const
     return m_replaceTextEdit->text();
 }
 
+void SearchResultWidget::setSupportPreserveCase(bool enabled)
+{
+    m_preserveCaseSupported = enabled;
+}
+
 void SearchResultWidget::setShowReplaceUI(bool visible)
 {
     m_searchResultTreeView->model()->setShowReplaceUI(visible);
     m_replaceLabel->setVisible(visible);
     m_replaceTextEdit->setVisible(visible);
     m_replaceButton->setVisible(visible);
-    m_preserveCaseCheck->setVisible(visible);
+    m_preserveCaseCheck->setVisible(visible && m_preserveCaseSupported);
     m_isShowingReplaceUI = visible;
 }
 
@@ -447,7 +452,8 @@ void SearchResultWidget::handleReplaceButton()
     // by pressing return in replace line edit
     if (m_replaceButton->isEnabled()) {
         m_infoBar.clear();
-        emit replaceButtonClicked(m_replaceTextEdit->text(), checkedItems(), m_preserveCaseCheck->isChecked());
+        emit replaceButtonClicked(m_replaceTextEdit->text(), checkedItems(),
+                                  m_preserveCaseSupported && m_preserveCaseCheck->isChecked());
     }
 }
 

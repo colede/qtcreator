@@ -32,11 +32,11 @@
 
 #include "utils_global.h"
 
-#include <QTreeView>
+#include "itemviews.h"
 
 namespace Utils {
 
-class QTCREATOR_UTILS_EXPORT NavigationTreeView : public QTreeView
+class QTCREATOR_UTILS_EXPORT NavigationTreeView : public Utils::TreeView
 {
     Q_OBJECT
 public:
@@ -46,10 +46,6 @@ protected:
     void focusInEvent(QFocusEvent *event);
     void focusOutEvent(QFocusEvent *event);
     void resizeEvent(QResizeEvent *event);
-
-#ifdef Q_OS_MAC
-    void keyPressEvent(QKeyEvent *event);
-#endif
 };
 
 } // Utils

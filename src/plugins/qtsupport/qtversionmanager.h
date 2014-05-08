@@ -42,10 +42,10 @@ class QTSUPPORT_EXPORT QtVersionManager : public QObject
     friend class BaseQtVersion;
     friend class Internal::QtOptionsPageWidget;
 public:
-    static QObject *instance();
+    static QtVersionManager *instance();
     QtVersionManager();
     ~QtVersionManager();
-    static void extensionsInitialized();
+    static void initialized();
     static bool delayedInitialize();
 
     static bool isLoaded();
@@ -83,6 +83,7 @@ public slots:
 
 private slots:
     void updateFromInstaller(bool emitSignal = true);
+    void triggerQtVersionRestore();
 
 private:
     // Used by QtOptionsPage

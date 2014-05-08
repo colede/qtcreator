@@ -49,7 +49,6 @@ public:
 
     virtual bool open(QString *errorString, const QString &fileName, const QString &realFileName) = 0;
     virtual IDocument *document() = 0;
-    virtual Core::Id id() const = 0;
 
     virtual bool duplicateSupported() const { return false; }
     virtual IEditor *duplicate() { return 0; }
@@ -59,7 +58,7 @@ public:
 
     virtual int currentLine() const { return 0; }
     virtual int currentColumn() const { return 0; }
-    virtual void gotoLine(int line, int column = 0) { Q_UNUSED(line) Q_UNUSED(column) }
+    virtual void gotoLine(int line, int column = 0, bool centerLine = true) { Q_UNUSED(line) Q_UNUSED(column) Q_UNUSED(centerLine) }
 
     virtual QWidget *toolBar() = 0;
 

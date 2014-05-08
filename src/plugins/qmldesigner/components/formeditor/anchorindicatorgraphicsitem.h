@@ -48,8 +48,8 @@ public:
 
     void updateAnchorIndicator(const AnchorLine &sourceAnchorLine, const AnchorLine targetAnchorLine);
 
-    AnchorLine::Type sourceAnchorLineType() const;
-    void setSourceAnchorLineType(const AnchorLine::Type &sourceAnchorLineType);
+    AnchorLineType sourceAnchorLineType() const;
+    void setSourceAnchorLineType(const AnchorLineType &sourceAnchorLineType);
 
 protected:
     void updateBoundingRect();
@@ -63,8 +63,8 @@ private:
     QPointF m_sourceAnchorLineSecondPoint;
     QPointF m_targetAnchorLineFirstPoint;
     QPointF m_targetAnchorLineSecondPoint;
-    AnchorLine::Type m_sourceAnchorLineType;
-    AnchorLine::Type m_targetAnchorLineType;
+    AnchorLineType m_sourceAnchorLineType;
+    AnchorLineType m_targetAnchorLineType;
     QRectF m_boundingRect;
 };
 

@@ -77,7 +77,9 @@ SOURCES += $$PWD/model/abstractview.cpp \
     $$PWD/exceptions/rewritingexception.cpp \
     $$PWD/model/viewmanager.cpp \
     $$PWD/model/signalhandlerproperty.cpp \
-    $$PWD/model/internalsignalhandlerproperty.cpp
+    $$PWD/model/internalsignalhandlerproperty.cpp \
+    $$PWD/model/anchorline.cpp \
+    $$PWD/instances/puppetdialog.cpp
 
 HEADERS += $$PWD/include/qmldesignercorelib_global.h \
     $$PWD/include/abstractview.h \
@@ -148,7 +150,13 @@ HEADERS += $$PWD/include/qmldesignercorelib_global.h \
     $$PWD/include/rewritingexception.h \
     $$PWD/include/viewmanager.h \
     $$PWD/include/signalhandlerproperty.h \
-    $$PWD/model/internalsignalhandlerproperty.h
+    $$PWD/model/internalsignalhandlerproperty.h \
+    $$PWD/include/anchorline.h \
+    $$PWD/instances/puppetdialog.h
+
+FORMS += \
+    $$PWD/instances/puppetdialog.ui
+
 
 contains(CONFIG, plugin) {
   # If core.pri has been included in the qmldesigner plugin

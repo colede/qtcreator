@@ -205,7 +205,7 @@
       <item>
        <widget class="QCheckBox" name="enableDoxygenCheckBox">
         <property name="toolTip">
-         <string>Automatically creates a Doxygen comment upon pressing enter after a /**, /*!, //! or ///</string>
+         <string>Automatically creates a Doxygen comment upon pressing enter after a '/**', '/*!', '//!' or '///'.</string>
         </property>
         <property name="text">
          <string>Enable Doxygen blocks</string>
@@ -233,7 +233,7 @@
         <item>
          <widget class="QCheckBox" name="generateBriefCheckBox">
           <property name="toolTip">
-           <string>Generates a &lt;i&gt;brief&lt;/i&gt; command with an initial description for the corresponding declaration</string>
+           <string>Generates a &lt;i&gt;brief&lt;/i&gt; command with an initial description for the corresponding declaration.</string>
           </property>
           <property name="text">
            <string>Generate brief description</string>
@@ -245,7 +245,7 @@
       <item>
        <widget class="QCheckBox" name="leadingAsterisksCheckBox">
         <property name="toolTip">
-         <string>Adds leading asterisks when continuing Qt (/*!) and Java (/**) style comments on new lines</string>
+         <string>Adds leading asterisks when continuing C/C++ &quot;/*&quot;, Qt &quot;/*!&quot; and Java &quot;/**&quot; style comments on new lines.</string>
         </property>
         <property name="text">
          <string>Add leading asterisks</string>

@@ -1,12 +1,32 @@
 !isEmpty(QTCREATOR_PRI_INCLUDED):error("qtcreator.pri already included")
 QTCREATOR_PRI_INCLUDED = 1
 
-QTCREATOR_VERSION = 3.0.81
-QTCREATOR_COMPAT_VERSION = 3.0.81
+QTCREATOR_VERSION = 3.1.81
+QTCREATOR_COMPAT_VERSION = 3.1.81
 BINARY_ARTIFACTS_BRANCH = master
 
-# enable c++11 on everything but mac/release (breaks 10.6)
-!macx|CONFIG(debug, debug|release): CONFIG += c++11
+# enable c++11
+isEqual(QT_MAJOR_VERSION, 5) {
+    CONFIG += c++11
+} else {
+    macx {
+        !macx-clang*: error("You need to use the macx-clang or macx-clang-libc++ mkspec to compile Qt Creator (call qmake with '-spec unsupported/macx-clang')")
+        QMAKE_CFLAGS += -mmacosx-version-min=10.7
+        QMAKE_CXXFLAGS += -std=c++11 -stdlib=libc++ -mmacosx-version-min=10.7
+        QMAKE_OBJECTIVE_CXXFLAGS += -std=c++11 -stdlib=libc++ -mmacosx-version-min=10.7
+        QMAKE_LFLAGS += -stdlib=libc++ -mmacosx-version-min=10.7
+    } else:linux-g++* {
+        QMAKE_CXXFLAGS += -std=c++0x
+    } else:linux-icc* {
+        QMAKE_CXXFLAGS += -std=c++11
+    } else:linux-clang* {
+        QMAKE_CXXFLAGS += -std=c++11
+        QMAKE_LFLAGS += -stdlib=libc++ -lc++abi
+    } else:win32-g++* {
+        QMAKE_CXXFLAGS += -std=c++0x
+    }
+    # nothing to do for MSVC10+
+}
 
 isEqual(QT_MAJOR_VERSION, 5) {
 
@@ -133,12 +153,6 @@ macx {
     IDE_DOC_PATH     = $$IDE_DATA_PATH/doc
     IDE_BIN_PATH     = $$IDE_APP_PATH/$${IDE_APP_TARGET}.app/Contents/MacOS
     copydata = 1
-    !isEqual(QT_MAJOR_VERSION, 5) {
-        # we use @rpath which is 10.5+
-        # Qt5 doesn't support 10.5, and will set the minimum version to 10.6 or 10.7.
-        QMAKE_CXXFLAGS *= -mmacosx-version-min=10.5
-        QMAKE_LFLAGS *= -mmacosx-version-min=10.5
-    }
 } else {
     contains(TEMPLATE, vc.*):vcproj = 1
     IDE_APP_TARGET   = qtcreator
@@ -157,6 +171,7 @@ INCLUDEPATH += \
     $$IDE_SOURCE_TREE/tools
 
 QTC_PLUGIN_DIRS = $$(QTC_PLUGIN_DIRS)
+QTC_PLUGIN_DIRS = $$split(QTC_PLUGIN_DIRS, $$QMAKE_DIRLIST_SEP)
 QTC_PLUGIN_DIRS += $$IDE_SOURCE_TREE/src/plugins
 for(dir, QTC_PLUGIN_DIRS) {
     INCLUDEPATH += $$dir
@@ -186,7 +201,7 @@ unix {
     UI_DIR = $${OUT_PWD}/.uic
 }
 
-win32-msvc* { 
+win32-msvc* {
     #Don't warn about sprintf, fopen etc being 'unsafe'
     DEFINES += _CRT_SECURE_NO_WARNINGS
     # Speed up startup time when debugging with cdb
@@ -202,6 +217,7 @@ qt:greaterThan(QT_MAJOR_VERSION, 4) {
 QBSFILE = $$replace(_PRO_FILE_, \\.pro$, .qbs)
 exists($$QBSFILE):OTHER_FILES += $$QBSFILE
 
+!isEmpty(QTC_PLUGIN_DEPENDS):LIBS *= -L$$IDE_PLUGIN_PATH
 # recursively resolve plugin deps
 done_plugins =
 for(ever) {

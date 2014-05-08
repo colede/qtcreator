@@ -83,11 +83,7 @@ enum { debugSourceMapping = 0 };
 enum { debugWatches = 0 };
 enum { debugBreakpoints = 0 };
 
-enum HandleLocalsFlags
-{
-    PartialLocalsUpdate = 0x1,
-    LocalsUpdateForNewFrame = 0x2
-};
+enum { LocalsUpdateForNewFrame = 0x1 };
 
 #if 0
 #  define STATE_DEBUG(state, func, line, notifyFunc) qDebug("%s in %s at %s:%d", notifyFunc, stateName(state), func, line);
@@ -201,16 +197,6 @@ static inline bool isCreatorConsole(const DebuggerStartParameters &sp)
 {
     return !debuggerCore()->boolSetting(UseCdbConsole) && sp.useTerminal
            && (sp.startMode == StartInternal || sp.startMode == StartExternal);
-}
-
-static QMessageBox *
-nonModalMessageBox(QMessageBox::Icon icon, const QString &title, const QString &text)
-{
-    QMessageBox *mb = new QMessageBox(icon, title, text, QMessageBox::Ok,
-                                      Core::ICore::mainWindow());
-    mb->setAttribute(Qt::WA_DeleteOnClose);
-    mb->show();
-    return mb;
 }
 
 // Base data structure for command queue entries with callback
@@ -352,7 +338,6 @@ CdbEngine::CdbEngine(const DebuggerStartParameters &sp) :
     m_verboseLog(false), // Default CDB setting
     m_notifyEngineShutdownOnTermination(false),
     m_hasDebuggee(false),
-    m_cdbIs64Bit(false),
     m_wow64State(wow64Uninitialized),
     m_elapsedLogTime(0),
     m_sourceStepInto(false),
@@ -553,7 +538,7 @@ bool CdbEngine::startConsole(const DebuggerStartParameters &sp, QString *errorMe
     if (sp.environment.size())
         m_consoleStub->setEnvironment(sp.environment);
     if (!m_consoleStub->start(sp.executable, sp.processArgs)) {
-        *errorMessage = tr("The console process '%1' could not be started.").arg(sp.executable);
+        *errorMessage = tr("The console process \"%1\" could not be started.").arg(sp.executable);
         return false;
     }
     return true;
@@ -570,7 +555,7 @@ void CdbEngine::consoleStubError(const QString &msg)
         STATE_DEBUG(state(), Q_FUNC_INFO, __LINE__, "notifyEngineIll")
         notifyEngineIll();
     }
-    nonModalMessageBox(QMessageBox::Critical, tr("Debugger Error"), msg);
+    showMessageBox(QMessageBox::Critical, tr("Debugger Error"), msg);
 }
 
 void CdbEngine::consoleStubProcessStarted()
@@ -669,15 +654,10 @@ bool CdbEngine::launchCDB(const DebuggerStartParameters &sp, QString *errorMessa
         return false;
     }
 
-    m_cdbIs64Bit =
-#ifdef Q_OS_WIN
-            Utils::winIs64BitBinary(executable);
-#else
-            false;
-#endif
-    if (!m_cdbIs64Bit)
+    bool cdbIs64Bit = Utils::is64BitWindowsBinary(executable);
+    if (!cdbIs64Bit)
         m_wow64State = noWow64Stack;
-    const QFileInfo extensionFi(CdbEngine::extensionLibraryName(m_cdbIs64Bit));
+    const QFileInfo extensionFi(CdbEngine::extensionLibraryName(cdbIs64Bit));
     if (!extensionFi.isFile()) {
         *errorMessage = QString::fromLatin1("Internal error: The extension %1 cannot be found.\n"
                                             "If you build Qt Creator from sources, check out "
@@ -790,15 +770,19 @@ void CdbEngine::setupInferior()
 {
     if (debug)
         qDebug("setupInferior");
+    const DebuggerStartParameters &sp = startParameters();
+    if (!sp.commandsAfterConnect.isEmpty())
+        postCommand(sp.commandsAfterConnect, 0);
     // QmlCppEngine expects the QML engine to be connected before any breakpoints are hit
     // (attemptBreakpointSynchronization() will be directly called then)
     attemptBreakpointSynchronization();
-    if (startParameters().breakOnMain) {
+    if (sp.breakOnMain) {
         const BreakpointParameters bp(BreakpointAtMain);
         postCommand(cdbAddBreakpointCommand(bp, m_sourcePathMappings,
                                             BreakpointModelId(quint16(-1)), true), 0);
     }
     postCommand("sxn 0x4000001f", 0); // Do not break on WowX86 exceptions.
+    postCommand("sxn ibp", 0); // Do not break on initial breakpoints.
     postCommand(".asm source_line", 0); // Source line in assembly
     postCommand(m_extensionCommandPrefixBA + "setparameter maxStringLength="
                 + debuggerCore()->action(MaximalStringLength)->value().toByteArray()
@@ -1060,7 +1044,7 @@ void CdbEngine::handleAddWatch(const CdbExtensionCommandPtr &reply)
     } else {
         item.setError(tr("Unable to add expression"));
         watchHandler()->insertIncompleteData(item);
-        showMessage(QString::fromLatin1("Unable to add watch item '%1'/'%2': %3").
+        showMessage(QString::fromLatin1("Unable to add watch item \"%1\"/\"%2\": %3").
                     arg(QString::fromLatin1(item.iname), QString::fromLatin1(item.exp),
                         QString::fromLocal8Bit(reply->errorMessage)), LogError);
     }
@@ -1098,9 +1082,7 @@ void CdbEngine::updateLocalVariable(const QByteArray &iname)
     }
     str << blankSeparator << iname;
     postExtensionCommand(isWatch ? "watches" : "locals",
-                         localsArguments, 0,
-                         &CdbEngine::handleLocals,
-                         0, QVariant(int(PartialLocalsUpdate)));
+                         localsArguments, 0, &CdbEngine::handleLocals);
 }
 
 bool CdbEngine::hasCapability(unsigned cap) const
@@ -1115,7 +1097,8 @@ bool CdbEngine::hasCapability(unsigned cap) const
            |CreateFullBacktraceCapability
            |OperateByInstructionCapability
            |RunToLineCapability
-           |MemoryAddressCapability);
+           |MemoryAddressCapability
+           |AdditionalQmlStackCapability);
 }
 
 void CdbEngine::executeStep()
@@ -1399,7 +1382,7 @@ void CdbEngine::postBuiltinCommand(const QByteArray &cmd, unsigned flags,
                                    const QVariant &cookie)
 {
     if (!m_accessible) {
-        const QString msg = QString::fromLatin1("Attempt to issue builtin command '%1' to non-accessible session (%2)")
+        const QString msg = QString::fromLatin1("Attempt to issue builtin command \"%1\" to non-accessible session (%2)")
                 .arg(QString::fromLocal8Bit(cmd), QString::fromLatin1(stateName(state())));
         showMessage(msg, LogError);
         return;
@@ -1436,7 +1419,7 @@ void CdbEngine::postExtensionCommand(const QByteArray &cmd,
                                      const QVariant &cookie)
 {
     if (!m_accessible) {
-        const QString msg = QString::fromLatin1("Attempt to issue extension command '%1' to non-accessible session (%2)")
+        const QString msg = QString::fromLatin1("Attempt to issue extension command \"%1\" to non-accessible session (%2)")
                 .arg(QString::fromLocal8Bit(cmd), QString::fromLatin1(stateName(state())));
         showMessage(msg, LogError);
         return;
@@ -1477,6 +1460,11 @@ void CdbEngine::activateFrame(int index)
     }
 
     const StackFrame frame = frames.at(index);
+    if (frame.language != CppLanguage) {
+        gotoLocation(frame);
+        return;
+    }
+
     if (debug || debugLocals)
         qDebug("activateFrame idx=%d '%s' %d", index,
                qPrintable(frame.file), frame.line);
@@ -1499,6 +1487,8 @@ void CdbEngine::updateLocals(bool forNewStackFrame)
         watchHandler()->removeAllData();
         return;
     }
+    if (forNewStackFrame)
+        watchHandler()->resetValueCache();
     /* Watchers: Forcibly discard old symbol group as switching from
      * thread 0/frame 0 -> thread 1/assembly -> thread 0/frame 0 will otherwise re-use it
      * and cause errors as it seems to go 'stale' when switching threads.
@@ -1673,7 +1663,7 @@ void CdbEngine::handleResolveSymbol(const CdbBuiltinCommandPtr &command)
 
 // Find the function address matching needle in a list of function
 // addresses obtained from the 'x' command. Check for the
-// mimimum POSITIVE offset (needle >= function address.)
+// minimum POSITIVE offset (needle >= function address.)
 static inline quint64 findClosestFunctionAddress(const QList<quint64> &addresses,
                                                  quint64 needle)
 {
@@ -1930,8 +1920,6 @@ void CdbEngine::handleRegisters(const CdbExtensionCommandPtr &reply)
 void CdbEngine::handleLocals(const CdbExtensionCommandPtr &reply)
 {
     const int flags = reply->cookie.toInt();
-    if (!(flags & PartialLocalsUpdate))
-        watchHandler()->removeAllData();
     if (reply->success) {
         if (debuggerCore()->boolSetting(VerboseLog))
             showMessage(QLatin1String("Locals: ") + QString::fromLatin1(reply->reply), LogDebug);
@@ -2050,7 +2038,7 @@ static inline QString msgCheckingConditionalBreakPoint(BreakpointModelId id, con
                                                        const QByteArray &condition,
                                                        const QString &threadId)
 {
-    return CdbEngine::tr("Conditional breakpoint %1 (%2) in thread %3 triggered, examining expression '%4'.")
+    return CdbEngine::tr("Conditional breakpoint %1 (%2) in thread %3 triggered, examining expression \"%4\".")
             .arg(id.toString()).arg(number).arg(threadId, QString::fromLatin1(condition));
 }
 
@@ -2939,6 +2927,9 @@ static StackFrames parseFrames(const GdbMi &gdbmi, bool *incomplete = 0)
             frame.file = QFile::decodeName(fullName.data());
             frame.line = frameMi["line"].data().toInt();
             frame.usable = false; // To be decided after source path mapping.
+            const GdbMi languageMi = frameMi["language"];
+            if (languageMi.isValid() && languageMi.data() == "js")
+                frame.language = QmlLanguage;
         }
         frame.function = QLatin1String(frameMi["func"].data());
         frame.from = QLatin1String(frameMi["from"].data());
@@ -2991,6 +2982,39 @@ unsigned CdbEngine::parseStackTrace(const GdbMi &data, bool sourceStepInto)
     stackHandler()->setFrames(frames, incomplete);
     activateFrame(current);
     return 0;
+}
+
+void CdbEngine::loadAdditionalQmlStack()
+{
+    postExtensionCommand("qmlstack", QByteArray(), 0, &CdbEngine::handleAdditionalQmlStack);
+}
+
+void CdbEngine::handleAdditionalQmlStack(const CdbExtensionCommandPtr &reply)
+{
+    QString errorMessage;
+    do {
+        if (!reply->success) {
+            errorMessage = QLatin1String(reply->errorMessage);
+            break;
+        }
+        GdbMi stackGdbMi;
+        stackGdbMi.fromString(reply->reply);
+        if (!stackGdbMi.isValid()) {
+            errorMessage = QLatin1String("GDBMI parser error");
+            break;
+        }
+        StackFrames qmlFrames = parseFrames(stackGdbMi);
+        const int qmlFrameCount = qmlFrames.size();
+        if (!qmlFrameCount) {
+            errorMessage = QLatin1String("Empty stack");
+            break;
+        }
+        for (int i = 0; i < qmlFrameCount; ++i)
+            qmlFrames[i].fixQmlFrame(startParameters());
+        stackHandler()->prependFrames(qmlFrames);
+    } while (false);
+    if (!errorMessage.isEmpty())
+        showMessage(QLatin1String("Unable to obtain QML stack trace: ") + errorMessage, LogError);
 }
 
 void CdbEngine::mergeStartParametersSourcePathMap()
@@ -3218,7 +3242,7 @@ void CdbEngine::watchPoint(const QPoint &p)
         showMessage(tr("\"Select Widget to Watch\": Please stop the application first."), LogWarning);
         break;
     default:
-        showMessage(tr("\"Select Widget to Watch\": Not supported in state '%1'.").
+        showMessage(tr("\"Select Widget to Watch\": Not supported in state \"%1\".").
                     arg(QString::fromLatin1(stateName(state()))), LogWarning);
         break;
     }

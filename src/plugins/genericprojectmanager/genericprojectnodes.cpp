@@ -225,7 +225,7 @@ FolderNode *GenericProjectNode::findFolderByName(const QStringList &components, 
     return 0;
 }
 
-bool GenericProjectNode::hasBuildTargets() const
+bool GenericProjectNode::showInSimpleTree() const
 {
     return true;
 }
@@ -282,12 +282,6 @@ bool GenericProjectNode::deleteFiles(const QStringList &filePaths)
 bool GenericProjectNode::renameFile(const QString &filePath, const QString &newFilePath)
 {
     return m_project->renameFile(filePath, newFilePath);
-}
-
-QList<RunConfiguration *> GenericProjectNode::runConfigurationsFor(Node *node)
-{
-    Q_UNUSED(node)
-    return QList<RunConfiguration *>();
 }
 
 } // namespace Internal

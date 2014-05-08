@@ -39,11 +39,20 @@ Controls.ComboBox {
     property color textColor: colorLogic.textColor
     property string scope: "Qt"
 
+    property bool useInteger: false
+
     ColorLogic {
         id: colorLogic
         backendValue: comboBox.backendValue
         onValueFromBackendChanged: {
-            comboBox.currentIndex = comboBox.find(comboBox.backendValue.enumeration);
+            if (!comboBox.useInt) {
+                var enumString = comboBox.backendValue.enumeration;
+                if (enumString === "")
+                    enumString = comboBox.backendValue.value
+                comboBox.currentIndex = comboBox.find(enumString);
+            } else {
+                comboBox.currentIndex = backendValue.value
+            }
         }
     }
 
@@ -51,14 +60,11 @@ Controls.ComboBox {
         if (backendValue === undefined)
             return;
 
-            backendValue.setEnumeration(comboBox.scope, comboBox.currentText)
-    }
-
-    onFocusChanged: {
-        if (focus) {
-            transaction.start();
+        if (!comboBox.useInt) {
+            backendValue.setEnumeration(comboBox.scope, comboBox.currentText);
         } else {
-            transaction.end();
+            print("useint" + comboBox.currentIndex)
+            backendValue.value = comboBox.currentIndex;
         }
     }
 

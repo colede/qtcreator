@@ -889,9 +889,6 @@ bool TextToModelMerger::load(const QString &data, DifferenceHandler &differenceH
 
             if (!warnings.isEmpty() && differenceHandler.isValidator() && !m_rewriterView->inErrorState()) {
 
-                QString title = QCoreApplication::translate("QmlDesigner::TextToModelMerger", "This .qml file contains features "
-                                                            "which are not supported by Qt Quick Designer");
-
                 QStringList message;
 
                 foreach (const RewriterView::Error &warning, warnings) {
@@ -1243,14 +1240,14 @@ void TextToModelMerger::syncNodeId(ModelNode &modelNode, const QString &astObjec
         if (!modelNode.id().isEmpty()) {
             ModelNode existingNodeWithId = m_rewriterView->modelNodeForId(astObjectId);
             if (existingNodeWithId.isValid())
-                existingNodeWithId.setId(QString());
+                existingNodeWithId.setIdWithoutRefactoring(QString());
             differenceHandler.idsDiffer(modelNode, astObjectId);
         }
     } else {
         if (modelNode.id() != astObjectId) {
             ModelNode existingNodeWithId = m_rewriterView->modelNodeForId(astObjectId);
             if (existingNodeWithId.isValid())
-                existingNodeWithId.setId(QString());
+                existingNodeWithId.setIdWithoutRefactoring(QString());
             differenceHandler.idsDiffer(modelNode, astObjectId);
         }
     }
@@ -1723,7 +1720,6 @@ ModelNode ModelAmender::listPropertyMissingModelNode(NodeListProperty &modelProp
         return ModelNode();
 
     QString typeNameString;
-    QString fullTypeName;
     QString dummy;
     int majorVersion;
     int minorVersion;
@@ -1809,7 +1805,7 @@ void ModelAmender::propertyAbsentFromQml(AbstractProperty &modelProperty)
 
 void ModelAmender::idsDiffer(ModelNode &modelNode, const QString &qmlId)
 {
-    modelNode.setId(qmlId);
+    modelNode.setIdWithoutRefactoring(qmlId);
 }
 
 void TextToModelMerger::setupComponent(const ModelNode &node)

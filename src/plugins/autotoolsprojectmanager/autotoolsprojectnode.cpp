@@ -45,7 +45,7 @@ AutotoolsProjectNode::AutotoolsProjectNode(AutotoolsProject *project, Core::IDoc
 {
 }
 
-bool AutotoolsProjectNode::hasBuildTargets() const
+bool AutotoolsProjectNode::showInSimpleTree() const
 {
     return true;
 }
@@ -102,10 +102,4 @@ bool AutotoolsProjectNode::renameFile(const QString &filePath,
     Q_UNUSED(filePath);
     Q_UNUSED(newFilePath);
     return false;
-}
-
-QList<RunConfiguration *> AutotoolsProjectNode::runConfigurationsFor(Node *node)
-{
-    Q_UNUSED(node);
-    return QList<RunConfiguration *>();
 }

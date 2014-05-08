@@ -317,6 +317,8 @@ void QmlProfilerFileReader::loadProfilerDataModel(QXmlStreamReader &stream)
                     range.numericData1 = attributes.value(_("framerate")).toString().toLongLong();
                 if (attributes.hasAttribute(_("animationcount")))
                     range.numericData2 = attributes.value(_("animationcount")).toString().toLongLong();
+                if (attributes.hasAttribute(_("thread")))
+                    range.numericData3 = attributes.value(_("thread")).toString().toLongLong();
                 if (attributes.hasAttribute(_("width")))
                     range.numericData1 = attributes.value(_("width")).toString().toLongLong();
                 if (attributes.hasAttribute(_("height")))
@@ -369,7 +371,7 @@ void QmlProfilerFileReader::processQmlEvents()
         QmlEvent &event = m_qmlEvents[eventIndex];
 
         emit rangedEvent(event.type, event.bindingType, range.startTime, range.duration,
-                         QStringList(event.displayName),
+                         QStringList(event.details),
                          QmlEventLocation(event.filename, event.line, event.column),
                          range.numericData1,range.numericData2, range.numericData3, range.numericData4, range.numericData5);
 
@@ -437,12 +439,17 @@ void QmlProfilerFileWriter::save(QIODevice *device)
     stream.writeStartElement(_("eventData"));
     stream.writeAttribute(_("totalTime"), QString::number(m_measuredTime));
 
+    QMap<QString, QString> keys;
+    int i = 0;
+    foreach (const QString &key, m_qmlEvents.keys())
+        keys[key] = QString::number(i++);
+
     QHash<QString,QmlEvent>::const_iterator eventIter = m_qmlEvents.constBegin();
     for (; eventIter != m_qmlEvents.constEnd(); ++eventIter) {
         QmlEvent event = eventIter.value();
 
         stream.writeStartElement(_("event"));
-        stream.writeAttribute(_("index"), QString::number(m_qmlEvents.keys().indexOf(eventIter.key())));
+        stream.writeAttribute(_("index"), keys[eventIter.key()]);
         stream.writeTextElement(_("displayname"), event.displayName);
         stream.writeTextElement(_("type"), qmlEventTypeAsString(event.type));
         if (!event.filename.isEmpty()) {
@@ -474,7 +481,7 @@ void QmlProfilerFileWriter::save(QIODevice *device)
         stream.writeAttribute(_("startTime"), QString::number(range.startTime));
         if (range.duration > 0) // no need to store duration of instantaneous events
             stream.writeAttribute(_("duration"), QString::number(range.duration));
-        stream.writeAttribute(_("eventIndex"), QString::number(m_qmlEvents.keys().indexOf(eventHash)));
+        stream.writeAttribute(_("eventIndex"), keys[eventHash]);
 
         QmlEvent event = m_qmlEvents.value(eventHash);
 
@@ -483,6 +490,7 @@ void QmlProfilerFileWriter::save(QIODevice *device)
 
             stream.writeAttribute(_("framerate"), QString::number(range.numericData1));
             stream.writeAttribute(_("animationcount"), QString::number(range.numericData2));
+            stream.writeAttribute(_("thread"), QString::number(range.numericData3));
         }
 
         // special: pixmap cache event

@@ -65,37 +65,34 @@ def __checkBuildAndRun__():
     foundCompilers = []
     foundCompilerNames = []
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Compilers")
-    compilerTV = waitForObject(":BuildAndRun_QTreeView")
-    __iterateTree__(compilerTV, __compFunc__, foundCompilers, foundCompilerNames)
+    __iterateTree__(":BuildAndRun_QTreeView", __compFunc__, foundCompilers, foundCompilerNames)
     test.verify(__compareCompilers__(foundCompilers, expectedCompilers),
                 "Verifying found and expected compilers are equal.")
     # check debugger
     expectedDebuggers = __getExpectedDebuggers__()
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Debuggers")
     foundDebugger = []
-    debuggerTV = waitForObject(":BuildAndRun_QTreeView")
-    __iterateTree__(debuggerTV, __dbgFunc__, foundDebugger)
+    __iterateTree__(":BuildAndRun_QTreeView", __dbgFunc__, foundDebugger)
     test.verify(__compareDebuggers__(foundDebugger, expectedDebuggers),
                 "Verifying found and expected debuggers are equal.")
     # check Qt versions
     qmakePath = which("qmake")
     foundQt = []
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Qt Versions")
-    qtTW = waitForObject(":QtSupport__Internal__QtVersionManager.qtdirList_QTreeWidget")
-    __iterateTree__(qtTW, __qtFunc__, foundQt, qmakePath)
+    __iterateTree__(":QtSupport__Internal__QtVersionManager.qtdirList_QTreeWidget",
+                    __qtFunc__, foundQt, qmakePath)
     if foundQt:
         foundQt = foundQt[0]
     # check kits
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Kits")
-    kitsTV = waitForObject(":BuildAndRun_QTreeView")
-    __iterateTree__(kitsTV, __kitFunc__, foundQt, foundCompilerNames)
+    __iterateTree__(":BuildAndRun_QTreeView", __kitFunc__, foundQt, foundCompilerNames)
 
-def __iterateTree__(treeObj, additionalFunc, *additionalParameters):
+def __iterateTree__(treeObjStr, additionalFunc, *additionalParameters):
     global currentSelectedTreeItem
-    model = treeObj.model()
+    model = waitForObject(treeObjStr).model()
     # 1st row: Auto-detected, 2nd row: Manual
     for sect in dumpIndices(model):
-        sObj = "%s container=%s}" % (objectMap.realName(sect)[:-1], objectMap.realName(treeObj))
+        sObj = "%s container='%s'}" % (objectMap.realName(sect)[:-1], treeObjStr)
         items = dumpIndices(model, sect)
         doneItems = []
         for it in items:
@@ -163,11 +160,15 @@ def __getExpectedCompilers__():
     compilers = ["g++"]
     if platform.system() in ('Linux', 'Darwin'):
         compilers.extend(["g++-4.0", "g++-4.2", "clang++"])
+    if platform.system() == 'Darwin':
+        xcodeClang = getOutputFromCmdline("xcrun --find clang++").strip("\n")
+        if xcodeClang and os.path.exists(xcodeClang) and xcodeClang not in expected:
+            expected.append(xcodeClang)
     for compiler in compilers:
         compilerPath = which(compiler)
         if compilerPath:
-            if compiler == 'clang++':
-                if subprocess.call(['clang++', '-dumpmachine']) != 0:
+            if compiler.endswith('clang++'):
+                if subprocess.call([compiler, '-dumpmachine']) != 0:
                     test.warning("clang found in PATH, but version is not supported.")
                     continue
             expected.append(compilerPath)
@@ -227,6 +228,7 @@ def __getExpectedDebuggers__():
 def __getCDB__():
     result = []
     possibleLocations = ["C:\\Program Files\\Debugging Tools for Windows (x64)",
+                         "C:\\Program Files (x86)\\Debugging Tools for Windows (x86)",
                          "C:\\Program Files (x86)\\Windows Kits\\8.0\\Debuggers\\x86",
                          "C:\\Program Files\\Windows Kits\\8.0\\Debuggers\\x86",
                          "C:\\Program Files (x86)\\Windows Kits\\8.1\\Debuggers\\x86",

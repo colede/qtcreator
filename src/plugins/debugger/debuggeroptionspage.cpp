@@ -71,7 +71,6 @@ DebuggerItemConfigWidget::DebuggerItemConfigWidget(DebuggerItemModel *model) :
     m_binaryChooser->setExpectedKind(PathChooser::ExistingCommand);
     m_binaryChooser->setMinimumWidth(400);
     m_binaryChooser->setHistoryCompleter(QLatin1String("DebuggerPaths"));
-    connect(m_binaryChooser, SIGNAL(changed(QString)), this, SLOT(commandWasChanged()));
 
     m_cdbLabel = new QLabel(this);
     m_cdbLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
@@ -87,6 +86,8 @@ DebuggerItemConfigWidget::DebuggerItemConfigWidget(DebuggerItemModel *model) :
     formLayout->addRow(m_cdbLabel);
     formLayout->addRow(new QLabel(tr("Path:")), m_binaryChooser);
     formLayout->addRow(new QLabel(tr("ABIs:")), m_abis);
+
+    connect(m_binaryChooser, SIGNAL(changed(QString)), this, SLOT(binaryPathHasChanged()));
 }
 
 DebuggerItem DebuggerItemConfigWidget::item() const
@@ -123,57 +124,7 @@ void DebuggerItemConfigWidget::setAbis(const QStringList &abiNames)
     m_abis->setText(abiNames.join(QLatin1String(", ")));
 }
 
-void DebuggerItemConfigWidget::setItem(const DebuggerItem &item)
-{
-    store(); // store away the (changed) settings for future use
-
-    m_autodetected = item.isAutoDetected();
-    m_id = item.id();
-
-    m_displayNameLineEdit->setEnabled(!item.isAutoDetected());
-    m_displayNameLineEdit->setText(item.displayName());
-
-    m_binaryChooser->setEnabled(!item.isAutoDetected());
-    m_binaryChooser->setFileName(item.command());
-
-    QString text;
-    QString versionCommand;
-    if (item.engineType() == CdbEngineType) {
-#ifdef Q_OS_WIN
-        const bool is64bit = winIs64BitSystem();
-#else
-        const bool is64bit = false;
-#endif
-        const QString versionString = is64bit ? tr("64-bit version") : tr("32-bit version");
-        //: Label text for path configuration. %2 is "x-bit version".
-        text = tr("<html><body><p>Specify the path to the "
-                  "<a href=\"%1\">Windows Console Debugger executable</a>"
-                  " (%2) here.</p>""</body></html>").
-                arg(QLatin1String(debuggingToolsWikiLinkC), versionString);
-        versionCommand = QLatin1String("-version");
-    } else {
-        versionCommand = QLatin1String("--version");
-    }
-
-    m_cdbLabel->setText(text);
-    m_cdbLabel->setVisible(!text.isEmpty());
-    m_binaryChooser->setCommandVersionArguments(QStringList(versionCommand));
-
-    setAbis(item.abiNames());
-    m_engineType = item.engineType();
-}
-
-void DebuggerItemConfigWidget::apply()
-{
-    DebuggerItem current = m_model->currentDebugger();
-    if (!current.isValid())
-        return; // Nothing was selected here.
-
-    store();
-    setItem(item());
-}
-
-void DebuggerItemConfigWidget::commandWasChanged()
+void DebuggerItemConfigWidget::handleCommandChange()
 {
     // Use DebuggerItemManager as a cache:
     const DebuggerItem *existing
@@ -194,6 +145,64 @@ void DebuggerItemConfigWidget::commandWasChanged()
         }
     }
     m_model->updateDebugger(item());
+}
+
+void DebuggerItemConfigWidget::setItem(const DebuggerItem &item)
+{
+    store(); // store away the (changed) settings for future use
+
+    m_id = QVariant(); // reset Id to avoid intermediate signal handling
+
+    // Set values:
+    m_autodetected = item.isAutoDetected();
+
+    m_displayNameLineEdit->setEnabled(!item.isAutoDetected());
+    m_displayNameLineEdit->setText(item.displayName());
+
+    m_binaryChooser->setEnabled(!item.isAutoDetected());
+    m_binaryChooser->setFileName(item.command());
+
+    QString text;
+    QString versionCommand;
+    if (item.engineType() == CdbEngineType) {
+        const bool is64bit = is64BitWindowsSystem();
+        const QString versionString = is64bit ? tr("64-bit version") : tr("32-bit version");
+        //: Label text for path configuration. %2 is "x-bit version".
+        text = tr("<html><body><p>Specify the path to the "
+                  "<a href=\"%1\">Windows Console Debugger executable</a>"
+                  " (%2) here.</p>""</body></html>").
+                arg(QLatin1String(debuggingToolsWikiLinkC), versionString);
+        versionCommand = QLatin1String("-version");
+    } else {
+        versionCommand = QLatin1String("--version");
+    }
+
+    m_cdbLabel->setText(text);
+    m_cdbLabel->setVisible(!text.isEmpty());
+    m_binaryChooser->setCommandVersionArguments(QStringList(versionCommand));
+
+    setAbis(item.abiNames());
+    m_engineType = item.engineType();
+    m_id = item.id();
+}
+
+void DebuggerItemConfigWidget::apply()
+{
+    DebuggerItem current = m_model->currentDebugger();
+    if (!current.isValid())
+        return; // Nothing was selected here.
+
+    store();
+    setItem(item());
+}
+
+void DebuggerItemConfigWidget::binaryPathHasChanged()
+{
+    // Ignore change if this is no valid DebuggerItem
+    if (!m_id.isValid())
+        return;
+
+    handleCommandChange();
 }
 
 // --------------------------------------------------------------------------

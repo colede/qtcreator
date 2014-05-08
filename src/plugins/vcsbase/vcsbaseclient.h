@@ -92,7 +92,7 @@ public:
                                  const QString &dstLocation,
                                  const QStringList &extraOptions = QStringList());
     virtual void annotate(const QString &workingDir, const QString &file,
-                          const QString revision = QString(), int lineNumber = -1,
+                          const QString &revision = QString(), int lineNumber = -1,
                           const QStringList &extraOptions = QStringList());
     virtual void diff(const QString &workingDir, const QStringList &files = QStringList(),
                       const QStringList &extraOptions = QStringList());
@@ -194,9 +194,9 @@ private:
     VcsBaseClientPrivate *d;
 
     Q_PRIVATE_SLOT(d, void statusParser(QString))
-    Q_PRIVATE_SLOT(d, void annotateRevision(QString, QString, QString, int))
+    Q_PRIVATE_SLOT(d, void annotateRevision(QString,QString,QString,int))
     Q_PRIVATE_SLOT(d, void saveSettings())
-    Q_PRIVATE_SLOT(d, void commandFinishedGotoLine(QWidget *))
+    Q_PRIVATE_SLOT(d, void commandFinishedGotoLine(QWidget*))
 };
 
 } //namespace VcsBase

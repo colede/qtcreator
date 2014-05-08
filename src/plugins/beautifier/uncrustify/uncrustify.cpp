@@ -43,6 +43,7 @@
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
+#include <coreplugin/idocument.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/project.h>
@@ -69,9 +70,9 @@ Uncrustify::~Uncrustify()
 bool Uncrustify::initialize()
 {
     Core::ActionContainer *menu = Core::ActionManager::createMenu(Constants::Uncrustify::MENU_ID);
-    menu->menu()->setTitle(QLatin1String("Uncrustify"));
+    menu->menu()->setTitle(QLatin1String(Constants::Uncrustify::DISPLAY_NAME));
 
-    m_formatFile = new QAction(tr("Format Current File"), this);
+    m_formatFile = new QAction(BeautifierPlugin::msgFormatCurrentFile(), this);
     Core::Command *cmd
             = Core::ActionManager::registerAction(m_formatFile,
                                                   Constants::Uncrustify::ACTION_FORMATFILE,
@@ -86,7 +87,7 @@ bool Uncrustify::initialize()
 
 void Uncrustify::updateActions(Core::IEditor *editor)
 {
-    m_formatFile->setEnabled(editor && editor->id() == CppEditor::Constants::CPPEDITOR_ID);
+    m_formatFile->setEnabled(editor && editor->document()->id() == CppEditor::Constants::CPPEDITOR_ID);
 }
 
 QList<QObject *> Uncrustify::autoReleaseObjects()
@@ -126,7 +127,8 @@ void Uncrustify::formatFile()
         cfgFileName = m_settings->styleFileName(m_settings->customStyle());
 
     if (cfgFileName.isEmpty()) {
-        BeautifierPlugin::showError(tr("Could not get configuration file for uncrustify."));
+        BeautifierPlugin::showError(BeautifierPlugin::msgCannotGetConfigurationFile(
+                                        QLatin1String(Constants::Uncrustify::DISPLAY_NAME)));
     } else {
         BeautifierPlugin::formatCurrentFile(QStringList()
                                             << m_settings->command()

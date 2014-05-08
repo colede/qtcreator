@@ -97,7 +97,7 @@ public slots:
     void sendRecordingStatus();
 
 signals:
-    void complete();
+    void complete(qint64 maximumTime);
     void gap(qint64 time);
     void event(int event, qint64 time);
     void traceFinished( qint64 time );
@@ -111,7 +111,7 @@ signals:
     void cleared();
 
 protected:
-    virtual void statusChanged(ClientStatus status);
+    virtual void stateChanged(State status);
     virtual void messageReceived(const QByteArray &);
 
 private:

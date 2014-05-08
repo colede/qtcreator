@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import qbs.FileInfo
 
 import QtcPlugin
@@ -14,6 +14,7 @@ QtcPlugin {
     Depends { name: "Core" }
     Depends { name: "TextEditor" }
     Depends { name: "ProjectExplorer" }
+    Depends { name: "app_version_header" }
 
     cpp.defines: base
     Properties {
@@ -29,6 +30,7 @@ QtcPlugin {
         "cppchecksymbols.cpp", "cppchecksymbols.h",
         "cppclassesfilter.cpp", "cppclassesfilter.h",
         "cppcodeformatter.cpp", "cppcodeformatter.h",
+        "cppcodemodelinspectordumper.cpp", "cppcodemodelinspectordumper.h",
         "cppcodemodelsettings.cpp", "cppcodemodelsettings.h",
         "cppcodemodelsettingspage.cpp", "cppcodemodelsettingspage.h", "cppcodemodelsettingspage.ui",
         "cppcodestylepreferences.cpp", "cppcodestylepreferences.h",

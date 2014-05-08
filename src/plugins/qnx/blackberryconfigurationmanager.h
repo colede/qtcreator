@@ -45,12 +45,19 @@ namespace Internal {
 
 class BlackBerryApiLevelConfiguration;
 class BlackBerryRuntimeConfiguration;
+class QnxPlugin;
 
 class BlackBerryConfigurationManager : public QObject
 {
     Q_OBJECT
 public:
-    static BlackBerryConfigurationManager &instance();
+    enum ConfigurationType {
+        ApiLevel = 0x01,
+        Runtime = 0x02
+    };
+    Q_DECLARE_FLAGS(ConfigurationTypes, ConfigurationType)
+
+    static BlackBerryConfigurationManager *instance();
     ~BlackBerryConfigurationManager();
     bool addApiLevel(BlackBerryApiLevelConfiguration *config);
     void removeApiLevel(BlackBerryApiLevelConfiguration *config);
@@ -73,8 +80,7 @@ public:
     // returns the environment for the default API level
     QList<Utils::EnvironmentItem> defaultConfigurationEnv() const;
 
-    void loadAutoDetectedApiLevels();
-    void loadAutoDetectedRuntimes();
+    void loadAutoDetectedConfigurations(QFlags<ConfigurationType> types);
     void setDefaultConfiguration(BlackBerryApiLevelConfiguration *config);
 
     bool newestApiLevelEnabled() const;
@@ -92,6 +98,9 @@ signals:
 
 private:
     BlackBerryConfigurationManager(QObject *parent = 0);
+
+    static BlackBerryConfigurationManager *m_instance;
+
     QList<BlackBerryApiLevelConfiguration*> m_apiLevels;
     QList<BlackBerryRuntimeConfiguration*> m_runtimes;
 
@@ -102,14 +111,21 @@ private:
     void saveConfigurations();
     void restoreConfigurations();
 
+    void loadAutoDetectedApiLevels();
+    void loadAutoDetectedRuntimes();
+
     void loadManualConfigurations();
     void setKitsAutoDetectionSource();
 
     void insertApiLevelByVersion(BlackBerryApiLevelConfiguration* apiLevel);
     void insertRuntimeByVersion(BlackBerryRuntimeConfiguration* runtime);
+
+    friend class QnxPlugin;
 };
 
 } // namespace Internal
 } // namespace Qnx
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(Qnx::Internal::BlackBerryConfigurationManager::ConfigurationTypes)
 
 #endif // BLACKBERRYCONFIGURATIONMANAGER_H

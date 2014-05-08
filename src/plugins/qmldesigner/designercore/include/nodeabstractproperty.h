@@ -56,8 +56,10 @@ public:
     bool isEmpty() const;
     int count() const;
     int indexOf(const ModelNode &node) const;
+    NodeAbstractProperty parentProperty() const;
 
-    QList<ModelNode> allSubNodes();
+    const QList<ModelNode> allSubNodes();
+    const QList<ModelNode> directSubNodes() const;
 
 protected:
     NodeAbstractProperty(const PropertyName &propertyName, const Internal::InternalNodePointer &internalNode, Model *model, AbstractView *view);

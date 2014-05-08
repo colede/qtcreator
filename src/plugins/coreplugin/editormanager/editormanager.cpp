@@ -73,7 +73,6 @@
 #include <QTimer>
 
 #include <QAction>
-#include <QShortcut>
 #include <QApplication>
 #include <QFileDialog>
 #include <QMenu>
@@ -307,11 +306,11 @@ EditorManager::EditorManager(QWidget *parent) :
 
     if (Utils::HostOsInfo::isWindowsHost()) {
         // workaround for QTCREATORBUG-72
-        QShortcut *sc = new QShortcut(parent);
-        cmd = ActionManager::registerShortcut(sc, Constants::CLOSE_ALTERNATIVE, editManagerContext);
+        QAction *action = new QAction(tr("Alternative Close"), this);
+        cmd = ActionManager::registerAction(action, Constants::CLOSE_ALTERNATIVE, editManagerContext);
         cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+F4")));
         cmd->setDescription(EditorManager::tr("Close"));
-        connect(sc, SIGNAL(activated()), this, SLOT(closeEditor()));
+        connect(action, SIGNAL(triggered()), this, SLOT(closeEditor()));
     }
 
     // Close All Action
@@ -411,12 +410,14 @@ EditorManager::EditorManager(QWidget *parent) :
     medit->addMenu(advancedMenu, Constants::G_EDIT_ADVANCED);
     advancedMenu->menu()->setTitle(tr("Ad&vanced"));
     advancedMenu->appendGroup(Constants::G_EDIT_FORMAT);
+    advancedMenu->appendGroup(Constants::G_EDIT_TEXT);
     advancedMenu->appendGroup(Constants::G_EDIT_COLLAPSING);
     advancedMenu->appendGroup(Constants::G_EDIT_BLOCKS);
     advancedMenu->appendGroup(Constants::G_EDIT_FONT);
     advancedMenu->appendGroup(Constants::G_EDIT_EDITOR);
 
     // Advanced menu separators
+    advancedMenu->addSeparator(editManagerContext, Constants::G_EDIT_TEXT);
     advancedMenu->addSeparator(editManagerContext, Constants::G_EDIT_COLLAPSING);
     advancedMenu->addSeparator(editManagerContext, Constants::G_EDIT_BLOCKS);
     advancedMenu->addSeparator(editManagerContext, Constants::G_EDIT_FONT);
@@ -820,25 +821,19 @@ void EditorManager::addNativeDirActions(QMenu *contextMenu, DocumentModel::Entry
 
 static void setFocusToEditorViewAndUnmaximizePanes(EditorView *view)
 {
-    QWidget *w = 0;
-    if (view->currentEditor()) {
-        w = view->currentEditor()->widget()->focusWidget();
-        if (!w)
-            w = view->currentEditor()->widget();
-    } else {
-        w = view->focusWidget();
-        if (!w)
-            w = view;
-    }
+    IEditor *editor = view->currentEditor();
+    QWidget *target = editor ? editor->widget() : view;
+    QWidget *focus = target->focusWidget();
+    QWidget *w = focus ? focus : target;
+
     w->setFocus();
     ICore::raiseWindow(w);
-    if (OutputPanePlaceHolder::getCurrent()
-            && OutputPanePlaceHolder::getCurrent()->window() == view->window()) {
+
+    OutputPanePlaceHolder *holder = OutputPanePlaceHolder::getCurrent();
+    if (holder && holder->window() == view->window()) {
         // unmaximize output pane if necessary
-        if (OutputPanePlaceHolder::getCurrent()
-                && OutputPanePlaceHolder::getCurrent()->isVisible()
-                && OutputPanePlaceHolder::getCurrent()->isMaximized())
-            OutputPanePlaceHolder::getCurrent()->unmaximize();
+        if (holder->isVisible() && holder->isMaximized())
+            holder->unmaximize();
     }
 }
 
@@ -1423,10 +1418,12 @@ IEditor *EditorManager::createEditor(const Id &editorId, const QString &fileName
     }
 
     IEditor *editor = factories.front()->createEditor();
-    if (editor)
+    if (editor) {
+        QTC_CHECK(editor->document()->id().isValid()); // sanity check that the editor has an id set
         connect(editor->document(), SIGNAL(changed()), m_instance, SLOT(handleDocumentStateChange()));
-    if (editor)
         emit m_instance->editorCreated(editor, fileName);
+    }
+
     return editor;
 }
 
@@ -1443,7 +1440,8 @@ void EditorManager::addEditor(IEditor *editor)
         const bool addWatcher = !isTemporary;
         DocumentManager::addDocument(editor->document(), addWatcher);
         if (!isTemporary)
-            DocumentManager::addToRecentFiles(editor->document()->filePath(), editor->id());
+            DocumentManager::addToRecentFiles(editor->document()->filePath(),
+                                              editor->document()->id());
     }
     emit m_instance->editorOpened(editor);
 }
@@ -1494,8 +1492,13 @@ Core::Id EditorManager::getOpenWithEditorId(const QString &fileName,
 IEditor *EditorManager::openEditor(const QString &fileName, const Id &editorId,
                                    OpenEditorFlags flags, bool *newEditor)
 {
-    if (flags & EditorManager::OpenInOtherSplit)
-        m_instance->gotoOtherSplit();
+    if (flags & EditorManager::OpenInOtherSplit) {
+        if (flags & EditorManager::NoNewSplits)
+            m_instance->gotoNextSplit();
+        else
+            m_instance->gotoOtherSplit();
+    }
+
     return m_instance->openEditor(m_instance->currentEditorView(),
                                   fileName, editorId, flags, newEditor);
 }
@@ -1661,10 +1664,18 @@ QStringList EditorManager::getOpenFileNames()
 
 IEditor *EditorManager::openEditorWithContents(const Id &editorId,
                                         QString *titlePattern,
-                                        const QByteArray &contents)
+                                        const QByteArray &contents,
+                                        OpenEditorFlags flags)
 {
     if (debugEditorManager)
         qDebug() << Q_FUNC_INFO << editorId.name() << titlePattern << contents;
+
+    if (flags & EditorManager::OpenInOtherSplit) {
+        if (flags & EditorManager::NoNewSplits)
+            m_instance->gotoNextSplit();
+        else
+            m_instance->gotoOtherSplit();
+    }
 
     QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
 
@@ -1716,6 +1727,7 @@ IEditor *EditorManager::openEditorWithContents(const Id &editorId,
 
     m_instance->addEditor(edt);
     QApplication::restoreOverrideCursor();
+    activateEditor(edt, flags);
     return edt;
 }
 
@@ -1787,9 +1799,6 @@ void EditorManager::autoSave()
     if (!errors.isEmpty())
         QMessageBox::critical(ICore::mainWindow(), tr("File Error"),
                               errors.join(QLatin1String("\n")));
-
-    // Also save settings while accessing the disk anyway:
-    ICore::saveSettings();
 }
 
 MakeWritableResult EditorManager::makeFileWritable(IDocument *document)
@@ -2293,10 +2302,12 @@ static const char autoSaveIntervalKey[] = "EditorManager/AutoSaveInterval";
 void EditorManager::saveSettings()
 {
     SettingsDatabase *settings = ICore::settingsDatabase();
+    settings->beginTransaction();
     settings->setValue(QLatin1String(documentStatesKey), d->m_editorStates);
     settings->setValue(QLatin1String(reloadBehaviorKey), d->m_reloadSetting);
     settings->setValue(QLatin1String(autoSaveEnabledKey), d->m_autoSaveEnabled);
     settings->setValue(QLatin1String(autoSaveIntervalKey), d->m_autoSaveInterval);
+    settings->endTransaction();
 }
 
 void EditorManager::readSettings()

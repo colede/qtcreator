@@ -30,8 +30,10 @@
 #ifndef QMLPROFILERTRACEVIEW_H
 #define QMLPROFILERTRACEVIEW_H
 
+#include "qmlprofilermodelmanager.h"
 #include <QQuickView>
 #include <QWidget>
+#include <QTimer>
 
 namespace Analyzer { class IAnalyzerTool; }
 
@@ -47,19 +49,38 @@ class QmlProfilerViewManager;
 class ZoomControl : public QObject {
     Q_OBJECT
 public:
-    ZoomControl(QObject *parent=0):QObject(parent),m_startTime(0),m_endTime(0) {}
+    static const qint64 MAX_ZOOM_FACTOR = 1 << 12;
+
+    ZoomControl(const QmlProfilerTraceTime *traceTime, QObject *parent = 0);
     ~ZoomControl(){}
 
     Q_INVOKABLE void setRange(qint64 startTime, qint64 endTime);
-    Q_INVOKABLE qint64 startTime() { return m_startTime; }
-    Q_INVOKABLE qint64 endTime() { return m_endTime; }
+    Q_INVOKABLE qint64 startTime() const { return m_startTime; }
+    Q_INVOKABLE qint64 endTime() const { return m_endTime; }
+    Q_INVOKABLE qint64 duration() const { return m_endTime - m_startTime; }
+
+    Q_INVOKABLE qint64 windowStart() const { return m_windowStart; }
+    Q_INVOKABLE qint64 windowEnd() const { return m_windowEnd; }
+    Q_INVOKABLE qint64 windowLength() const { return m_windowEnd - m_windowStart; }
+    void setWindowLocked(bool lock) { m_windowLocked = lock; }
 
 signals:
     void rangeChanged();
+    void windowChanged();
+
+private slots:
+    void rebuildWindow();
+    void moveWindow();
 
 private:
     qint64 m_startTime;
     qint64 m_endTime;
+    qint64 m_windowStart;
+    qint64 m_windowEnd;
+
+    const QmlProfilerTraceTime *m_traceTime;
+    QTimer m_timer;
+    bool m_windowLocked;
 };
 
 class QmlProfilerTraceView : public QWidget
@@ -75,11 +96,12 @@ public:
     bool hasValidSelection() const;
     qint64 selectionStart() const;
     qint64 selectionEnd() const;
+    void showContextMenu(QPoint position);
 
 public slots:
-    void clearDisplay();
-    void selectNextEventByHash(const QString &eventHash);
-    void selectNextEventByLocation(const QString &filename, const int line, const int column);
+    void clear();
+    void selectByHash(const QString &eventHash);
+    void selectBySourceLocation(const QString &filename, int line, int column);
 
 private slots:
     void updateCursorPosition();
@@ -95,17 +117,16 @@ private slots:
 
 protected:
     virtual void resizeEvent(QResizeEvent *event);
+    virtual void contextMenuEvent(QContextMenuEvent *event);
+    virtual void mousePressEvent(QMouseEvent *event);
+    virtual void mouseReleaseEvent(QMouseEvent *event);
 
 private slots:
-    void profilerStateChanged();
-    void clientRecordingChanged();
-    void serverRecordingChanged();
     void setZoomSliderEnabled(bool enabled);
     void setZoomSliderVisible(bool visible);
 
 signals:
     void gotoSourceLocation(const QString &fileUrl, int lineNumber, int columNumber);
-    void selectedEventChanged(int eventId);
 
     void jumpToPrev();
     void jumpToNext();
@@ -117,15 +138,19 @@ signals:
     void resized();
 
 private:
-    void contextMenuEvent(QContextMenuEvent *);
     QWidget *createToolbar();
-
-    void setRecording(bool recording);
-    void setAppKilled();
 
 private:
     class QmlProfilerTraceViewPrivate;
     QmlProfilerTraceViewPrivate *d;
+};
+
+class QmlProfilerQuickView : public QQuickView {
+public:
+    QmlProfilerQuickView(QmlProfilerTraceView *parent) : parent(parent) {}
+protected:
+    QmlProfilerTraceView *parent;
+    bool event(QEvent *ev);
 };
 
 } // namespace Internal

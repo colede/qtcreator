@@ -32,7 +32,6 @@
 #include "remotelinuxenvironmentaspect.h"
 #include "remotelinuxrunconfigurationwidget.h"
 
-#include <debugger/debuggerrunconfigurationaspect.h>
 #include <projectexplorer/buildtargetinfo.h>
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/project.h>
@@ -84,7 +83,7 @@ using namespace Internal;
 
 RemoteLinuxRunConfiguration::RemoteLinuxRunConfiguration(Target *parent, const Core::Id id,
         const QString &proFilePath)
-    : RunConfiguration(parent, id),
+    : AbstractRemoteLinuxRunConfiguration(parent, id),
       d(new RemoteLinuxRunConfigurationPrivate(proFilePath))
 {
     init();
@@ -92,7 +91,7 @@ RemoteLinuxRunConfiguration::RemoteLinuxRunConfiguration(Target *parent, const C
 
 RemoteLinuxRunConfiguration::RemoteLinuxRunConfiguration(ProjectExplorer::Target *parent,
         RemoteLinuxRunConfiguration *source)
-    : RunConfiguration(parent, source),
+    : AbstractRemoteLinuxRunConfiguration(parent, source),
       d(new RemoteLinuxRunConfigurationPrivate(source->d))
 {
     init();
@@ -135,7 +134,7 @@ QVariantMap RemoteLinuxRunConfiguration::toMap() const
 {
     QVariantMap map(RunConfiguration::toMap());
     map.insert(QLatin1String(ArgumentsKey), d->arguments);
-    const QDir dir = QDir(target()->project()->projectDirectory());
+    const QDir dir = QDir(target()->project()->projectDirectory().toString());
     map.insert(QLatin1String(ProFileKey), dir.relativeFilePath(d->projectFilePath));
     map.insert(QLatin1String(UseAlternateExeKey), d->useAlternateRemoteExecutable);
     map.insert(QLatin1String(AlternateExeKey), d->alternateRemoteExecutable);
@@ -149,7 +148,7 @@ bool RemoteLinuxRunConfiguration::fromMap(const QVariantMap &map)
         return false;
 
     d->arguments = map.value(QLatin1String(ArgumentsKey)).toStringList();
-    const QDir dir = QDir(target()->project()->projectDirectory());
+    const QDir dir = QDir(target()->project()->projectDirectory().toString());
     d->projectFilePath
             = QDir::cleanPath(dir.filePath(map.value(QLatin1String(ProFileKey)).toString()));
     d->useAlternateRemoteExecutable = map.value(QLatin1String(UseAlternateExeKey), false).toBool();
@@ -179,12 +178,7 @@ Environment RemoteLinuxRunConfiguration::environment() const
 {
     RemoteLinuxEnvironmentAspect *aspect = extraAspect<RemoteLinuxEnvironmentAspect>();
     QTC_ASSERT(aspect, return Environment());
-    Environment env(OsTypeLinux);
-    env.modify(aspect->userEnvironmentChanges());
-    const QString displayKey = QLatin1String("DISPLAY");
-    if (!env.hasKey(displayKey))
-        env.appendOrSet(displayKey, QLatin1String(":0.0"));
-    return env;
+    return aspect->environment();
 }
 
 QString RemoteLinuxRunConfiguration::localExecutableFilePath() const
@@ -238,19 +232,6 @@ void RemoteLinuxRunConfiguration::setAlternateRemoteExecutable(const QString &ex
 QString RemoteLinuxRunConfiguration::alternateRemoteExecutable() const
 {
     return d->alternateRemoteExecutable;
-}
-
-int RemoteLinuxRunConfiguration::portsUsedByDebuggers() const
-{
-    int ports = 0;
-    Debugger::DebuggerRunConfigurationAspect *aspect
-            = extraAspect<Debugger::DebuggerRunConfigurationAspect>();
-    if (aspect->useQmlDebugger())
-        ++ports;
-    if (aspect->useCppDebugger())
-        ++ports;
-
-    return ports;
 }
 
 void RemoteLinuxRunConfiguration::handleBuildSystemDataUpdated()

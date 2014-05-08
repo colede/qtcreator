@@ -89,6 +89,8 @@ enum ProjectAction {
     Rename,
     // hides actions that use the path(): Open containing folder, open terminal here and Find in Directory
     HidePathActions,
+    HideFileActions,
+    HideFolderActions,
     HasSubProjectRunConfigurations
 };
 
@@ -174,9 +176,6 @@ public:
     void setDisplayName(const QString &name);
     void setIcon(const QIcon &icon);
 
-    FileNode *findFile(const QString &path);
-    FolderNode *findSubFolder(const QString &path);
-
     virtual bool addFiles(const QStringList &filePaths, QStringList *notAdded = 0);
     virtual bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = 0);
     virtual bool deleteFiles(const QStringList &filePaths);
@@ -192,13 +191,20 @@ public:
         int priority;
     };
 
-    virtual AddNewInformation addNewInformation(const QStringList &files) const;
+    virtual AddNewInformation addNewInformation(const QStringList &files, Node *context) const;
+
+
+    // determines if node will be shown in the flat view, by default folder and projects aren't shown
+    void aboutToChangeShowInSimpleTree();
+    void showInSimpleTreeChanged();
+    virtual bool showInSimpleTree() const;
 
     void addFileNodes(const QList<FileNode*> &files);
     void removeFileNodes(const QList<FileNode*> &files);
 
     void addFolderNodes(const QList<FolderNode*> &subFolders);
     void removeFolderNodes(const QList<FolderNode*> &subFolders);
+
 
 protected:
     QList<FolderNode*> m_subFolderNodes;
@@ -234,12 +240,6 @@ public:
     // all subFolders that are projects
     QList<ProjectNode*> subProjectNodes() const;
 
-    // determines if the project will be shown in the flat view
-    // TODO find a better name
-    void aboutToChangeHasBuildTargets();
-    void hasBuildTargetsChanged();
-    virtual bool hasBuildTargets() const = 0;
-
     virtual bool canAddSubProject(const QString &proFilePath) const = 0;
 
     virtual bool addSubProjects(const QStringList &proFilePaths) = 0;
@@ -249,8 +249,7 @@ public:
     // by default returns false
     virtual bool deploysFolder(const QString &folder) const;
 
-    // TODO node parameter not really needed
-    virtual QList<ProjectExplorer::RunConfiguration *> runConfigurationsFor(Node *node) = 0;
+    virtual QList<ProjectExplorer::RunConfiguration *> runConfigurations() const;
 
 
     QList<NodesWatcher*> watchers() const;
@@ -301,6 +300,7 @@ public:
 
     bool isEnabled() const { return true; }
 
+    bool showInSimpleTree() const;
 protected:
     void addProjectNodes(const QList<ProjectNode*> &projectNodes);
     void removeProjectNodes(const QList<ProjectNode*> &projectNodes);
@@ -322,12 +322,12 @@ public:
 signals:
     // everything
 
-    // Emited whenever the model needs to send a update signal.
+    // Emitted whenever the model needs to send a update signal.
     void nodeUpdated(ProjectExplorer::Node *node);
 
     // projects
-    void aboutToChangeHasBuildTargets(ProjectExplorer::ProjectNode*);
-    void hasBuildTargetsChanged(ProjectExplorer::ProjectNode *node);
+    void aboutToChangeShowInSimpleTree(ProjectExplorer::FolderNode*);
+    void showInSimpleTreeChanged(ProjectExplorer::FolderNode *node);
 
     // folders & projects
     void foldersAboutToBeAdded(FolderNode *parentFolder,

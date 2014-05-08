@@ -298,6 +298,7 @@
 #include <QStatusBar>
 
 using namespace Core::Internal;
+using namespace ExtensionSystem;
 
 namespace Core {
 
@@ -316,7 +317,7 @@ ICore::ICore(MainWindow *mainwindow)
     m_mainwindow = mainwindow;
     // Save settings once after all plugins are initialized:
     connect(ExtensionSystem::PluginManager::instance(), SIGNAL(initializationDone()),
-            this, SIGNAL(saveSettingsRequested()));
+            this, SLOT(saveSettings()));
 }
 
 ICore::~ICore()
@@ -338,6 +339,11 @@ bool ICore::showOptionsDialog(const Id group, const Id page, QWidget *parent)
     return m_mainwindow->showOptionsDialog(group, page, parent);
 }
 
+QString ICore::msgShowOptionsDialog()
+{
+    return QCoreApplication::translate("Core", "Configure...", "msgShowOptionsDialog");
+}
+
 bool ICore::showWarningWithOptions(const QString &title, const QString &text,
                                    const QString &details,
                                    Id settingsCategory,
@@ -351,7 +357,10 @@ bool ICore::showWarningWithOptions(const QString &title, const QString &text,
 
 QSettings *ICore::settings(QSettings::Scope scope)
 {
-    return m_mainwindow->settings(scope);
+    if (scope == QSettings::UserScope)
+        return PluginManager::settings();
+    else
+        return PluginManager::globalSettings();
 }
 
 SettingsDatabase *ICore::settingsDatabase()

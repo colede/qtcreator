@@ -56,7 +56,7 @@ CMakeBuildConfiguration::CMakeBuildConfiguration(ProjectExplorer::Target *parent
     BuildConfiguration(parent, Core::Id(Constants::CMAKE_BC_ID)), m_useNinja(false)
 {
     CMakeProject *project = static_cast<CMakeProject *>(parent->project());
-    setBuildDirectory(Utils::FileName::fromString(project->shadowBuildDirectory(project->projectFilePath(),
+    setBuildDirectory(Utils::FileName::fromString(project->shadowBuildDirectory(project->projectFilePath().toString(),
                                                                                 parent->kit(),
                                                                                 displayName())));
 }
@@ -65,7 +65,7 @@ CMakeBuildConfiguration::CMakeBuildConfiguration(ProjectExplorer::Target *parent
                                                  CMakeBuildConfiguration *source) :
     BuildConfiguration(parent, source),
     m_msvcVersion(source->m_msvcVersion),
-    m_useNinja(false)
+    m_useNinja(source->m_useNinja)
 {
     Q_ASSERT(parent);
     cloneSteps(source);
@@ -132,7 +132,7 @@ QList<ProjectExplorer::BuildInfo *> CMakeBuildConfigurationFactory::availableBui
     QList<ProjectExplorer::BuildInfo *> result;
 
     CMakeBuildInfo *info = createBuildInfo(parent->kit(),
-                                           parent->project()->projectDirectory());
+                                           parent->project()->projectDirectory().toString());
     result << info;
     return result;
 }
@@ -147,7 +147,7 @@ QList<ProjectExplorer::BuildInfo *> CMakeBuildConfigurationFactory::availableSet
                                                                                     const QString &projectPath) const
 {
     QList<ProjectExplorer::BuildInfo *> result;
-    CMakeBuildInfo *info = createBuildInfo(k, ProjectExplorer::Project::projectDirectory(projectPath));
+    CMakeBuildInfo *info = createBuildInfo(k, ProjectExplorer::Project::projectDirectory(Utils::FileName::fromString(projectPath)).toString());
     //: The name of the build configuration created by default for a cmake project.
     info->displayName = tr("Default");
     info->buildDirectory
@@ -169,11 +169,11 @@ ProjectExplorer::BuildConfiguration *CMakeBuildConfigurationFactory::create(Proj
 
     if (copy.buildDirectory.isEmpty())
         copy.buildDirectory
-                = Utils::FileName::fromString(project->shadowBuildDirectory(project->projectFilePath(),
+                = Utils::FileName::fromString(project->shadowBuildDirectory(project->projectFilePath().toString(),
                                                                             parent->kit(),
                                                                             copy.displayName));
 
-    CMakeOpenProjectWizard copw(project->projectManager(), CMakeOpenProjectWizard::ChangeDirectory, &copy);
+    CMakeOpenProjectWizard copw(Core::ICore::mainWindow(), project->projectManager(), CMakeOpenProjectWizard::ChangeDirectory, &copy);
     if (copw.exec() != QDialog::Accepted)
         return 0;
 

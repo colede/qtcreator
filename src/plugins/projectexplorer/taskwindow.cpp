@@ -41,9 +41,9 @@
 #include <coreplugin/icontext.h>
 #include <extensionsystem/pluginmanager.h>
 #include <utils/qtcassert.h>
+#include <utils/itemviews.h>
 
 #include <QDir>
-#include <QListView>
 #include <QPainter>
 #include <QStyledItemDelegate>
 #include <QMenu>
@@ -57,7 +57,7 @@ const int ELLIPSIS_GRADIENT_WIDTH = 16;
 namespace ProjectExplorer {
 namespace Internal {
 
-class TaskView : public QListView
+class TaskView : public Utils::ListView
 {
 public:
     TaskView(QWidget *parent = 0);
@@ -168,7 +168,7 @@ private:
 };
 
 TaskView::TaskView(QWidget *parent)
-    : QListView(parent)
+    : Utils::ListView(parent)
 {
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
@@ -730,6 +730,7 @@ QSize TaskDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelInd
         int height = 0;
         description.replace(QLatin1Char('\n'), QChar::LineSeparator);
         QTextLayout tl(description);
+        tl.setAdditionalFormats(index.data(TaskModel::Task_t).value<ProjectExplorer::Task>().formats);
         tl.beginLayout();
         while (true) {
             QTextLine line = tl.createLine();

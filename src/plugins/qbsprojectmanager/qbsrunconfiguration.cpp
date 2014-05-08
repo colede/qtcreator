@@ -141,6 +141,9 @@ void QbsRunConfiguration::ctor()
     connect(target(), SIGNAL(activeDeployConfigurationChanged(ProjectExplorer::DeployConfiguration*)),
             this, SLOT(installStepChanged()));
     installStepChanged();
+
+    if (isConsoleApplication())
+        m_runMode = Console;
 }
 
 QWidget *QbsRunConfiguration::createConfigurationWidget()
@@ -206,13 +209,10 @@ QString QbsRunConfiguration::executable() const
 
 ProjectExplorer::LocalApplicationRunConfiguration::RunMode QbsRunConfiguration::runMode() const
 {
-    if (forcedGuiMode())
-        return LocalApplicationRunConfiguration::Gui;
-
     return m_runMode;
 }
 
-bool QbsRunConfiguration::forcedGuiMode() const
+bool QbsRunConfiguration::isConsoleApplication() const
 {
     QbsProject *pro = static_cast<QbsProject *>(target()->project());
     const qbs::ProductData product = findProduct(pro->qbsProjectData(), m_qbsProduct);
@@ -221,7 +221,6 @@ bool QbsRunConfiguration::forcedGuiMode() const
             return !ta.properties().getProperty(QLatin1String("consoleApplication")).toBool();
     }
 
-    QTC_ASSERT(!pro->qbsProjectData().isValid(), qDebug("No executable target in product '%s'", qPrintable(product.name())));
     return false;
 }
 
@@ -358,6 +357,7 @@ QbsRunConfigurationWidget::QbsRunConfigurationWidget(QbsRunConfiguration *rc, QW
 
     m_executableLineEdit = new QLineEdit(this);
     m_executableLineEdit->setEnabled(false);
+    m_executableLineEdit->setPlaceholderText(tr("<unknown>"));
     toplayout->addRow(tr("Executable:"), m_executableLineEdit);
 
     QLabel *argumentsLabel = new QLabel(tr("Arguments:"), this);
@@ -388,8 +388,6 @@ QbsRunConfigurationWidget::QbsRunConfigurationWidget(QbsRunConfiguration *rc, QW
 
     QHBoxLayout *innerBox = new QHBoxLayout();
     m_useTerminalCheck = new QCheckBox(tr("Run in terminal"), this);
-    m_useTerminalCheck->setChecked(m_rc->runMode() == ProjectExplorer::LocalApplicationRunConfiguration::Console);
-    m_useTerminalCheck->setVisible(!m_rc->forcedGuiMode());
     innerBox->addWidget(m_useTerminalCheck);
 
     innerBox->addStretch();
@@ -436,6 +434,8 @@ void QbsRunConfigurationWidget::runConfigurationEnabledChange()
     m_disabledIcon->setVisible(!enabled);
     m_disabledReason->setVisible(!enabled);
     m_disabledReason->setText(m_rc->disabledReason());
+
+    m_useTerminalCheck->setChecked(m_rc->runMode() == ProjectExplorer::LocalApplicationRunConfiguration::Console);
     targetInformationHasChanged();
 }
 
@@ -476,7 +476,7 @@ void QbsRunConfigurationWidget::targetInformationHasChanged()
     m_executableLineEdit->setText(m_rc->executable());
 
     m_workingDirectoryEdit->setPath(m_rc->baseWorkingDirectory());
-    m_workingDirectoryEdit->setBaseDirectory(m_rc->target()->project()->projectDirectory());
+    m_workingDirectoryEdit->setBaseFileName(m_rc->target()->project()->projectDirectory());
     m_ignoreChange = false;
 }
 
@@ -495,10 +495,8 @@ void QbsRunConfigurationWidget::commandLineArgumentsChanged(const QString &args)
 
 void QbsRunConfigurationWidget::runModeChanged(ProjectExplorer::LocalApplicationRunConfiguration::RunMode runMode)
 {
-    if (!m_ignoreChange) {
-        m_useTerminalCheck->setVisible(!m_rc->forcedGuiMode());
+    if (!m_ignoreChange)
         m_useTerminalCheck->setChecked(runMode == ProjectExplorer::LocalApplicationRunConfiguration::Console);
-    }
 }
 
 // --------------------------------------------------------------------
@@ -565,9 +563,10 @@ QList<Core::Id> QbsRunConfigurationFactory::availableCreationIds(ProjectExplorer
         return result;
 
     foreach (const qbs::ProductData &product, project->qbsProjectData().allProducts()) {
-        if (!project->qbsProject().targetExecutable(product, qbs::InstallOptions()).isEmpty())
+        if (product.isRunnable() && product.isEnabled())
             result << Core::Id::fromString(QString::fromLatin1(QBS_RC_PREFIX) + product.name());
     }
+
     return result;
 }
 

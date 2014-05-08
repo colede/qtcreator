@@ -154,21 +154,15 @@ class VcsBaseEditor : public TextEditor::BaseTextEditor
 public:
     VcsBaseEditor(VcsBaseEditorWidget *, const VcsBaseEditorParameters *type);
 
-    Core::Id id() const { return m_id; }
-
 signals:
     void describeRequested(const QString &source, const QString &change);
     void annotateRevisionRequested(const QString &workingDirectory, const QString &file,
                                    const QString &change, int line);
-
-private:
-    Core::Id m_id;
 };
 
 VcsBaseEditor::VcsBaseEditor(VcsBaseEditorWidget *widget,
                              const VcsBaseEditorParameters *type)  :
-    BaseTextEditor(widget),
-    m_id(type->id)
+    BaseTextEditor(widget)
 {
     setContext(Core::Context(type->context, TextEditor::Constants::C_TEXTEDITOR));
 }
@@ -657,6 +651,7 @@ VcsBaseEditorWidget::VcsBaseEditorWidget(const VcsBaseEditorParameters *type, QW
     d(new Internal::VcsBaseEditorWidgetPrivate(this, type))
 {
     viewport()->setMouseTracking(true);
+    baseTextDocument()->setId(type->id);
     baseTextDocument()->setMimeType(QLatin1String(d->m_parameters->mimeType));
 }
 

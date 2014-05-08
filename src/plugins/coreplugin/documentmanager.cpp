@@ -693,7 +693,7 @@ QString DocumentManager::getSaveFileName(const QString &title, const QString &pa
             }
             if (QFile::exists(fileName)) {
                 if (QMessageBox::warning(ICore::dialogParent(), tr("Overwrite?"),
-                    tr("An item named '%1' already exists at this location. "
+                    tr("An item named \"%1\" already exists at this location. "
                        "Do you want to overwrite it?").arg(fileName),
                     QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
                     repeat = true;
@@ -901,8 +901,13 @@ void DocumentManager::checkForReload()
 {
     if (d->m_changedFiles.isEmpty())
         return;
-    if (!QApplication::activeWindow() || QApplication::activeModalWidget())
+    if (!QApplication::activeWindow())
         return;
+
+    if (QApplication::activeModalWidget()) { // a modal dialog, recheck later
+        QTimer::singleShot(200, this, SLOT(checkForReload()));
+        return;
+    }
 
     if (d->m_blockActivated)
         return;
@@ -1432,7 +1437,7 @@ void DocumentManager::executeOpenWithMenuAction(QAction *action)
                 = EditorManager::documentModel()->editorsForFilePath(entry.fileName);
         if (!editorsOpenForFile.isEmpty()) {
             foreach (IEditor *openEditor, editorsOpenForFile) {
-                if (entry.editorFactory->id() == openEditor->id())
+                if (entry.editorFactory->id() == openEditor->document()->id())
                     editorsOpenForFile.removeAll(openEditor);
             }
             if (!EditorManager::closeEditors(editorsOpenForFile)) // don't open if cancel was pressed

@@ -61,10 +61,18 @@ public:
                                          const ItemLibraryEntry &itemLibraryEntry,
                                          const QPointF &position,
                                          QmlItemNode parentQmlItemNode);
+    static QmlItemNode createQmlItemNode(AbstractView *view,
+                                         const ItemLibraryEntry &itemLibraryEntry,
+                                         const QPointF &position,
+                                         NodeAbstractProperty parentproperty);
     static QmlItemNode createQmlItemNodeFromImage(AbstractView *view,
                                                   const QString &imageName,
                                                   const QPointF &position,
                                                   QmlItemNode parentQmlItemNode);
+    static QmlItemNode createQmlItemNodeFromImage(AbstractView *view,
+                                                  const QString &imageName,
+                                                  const QPointF &position,
+                                                  NodeAbstractProperty parentproperty);
 
     QmlModelStateGroup states() const;
     QList<QmlItemNode> children() const;
@@ -74,6 +82,7 @@ public:
 
     bool hasChildren() const;
     bool hasResources() const;
+    bool instanceHasAnchor(AnchorLineType sourceAnchorLineType) const;
     bool instanceHasAnchors() const;
     bool instanceHasShowContent() const;
 

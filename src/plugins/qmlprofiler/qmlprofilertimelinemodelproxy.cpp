@@ -73,12 +73,14 @@ BasicTimelineModel::BasicTimelineModel(QObject *parent)
     : AbstractTimelineModel(new BasicTimelineModelPrivate, QLatin1String("BasicTimelineModel"),
                             parent)
 {
+    Q_D(BasicTimelineModel);
+    d->seenPaintEvent = false;
 }
 
 void BasicTimelineModel::clear()
 {
     Q_D(BasicTimelineModel);
-    d->SortedTimelineModel::clear();
+    d->clear();
     d->eventDict.clear();
     d->eventHashes.clear();
     d->categorySpan.clear();
@@ -117,6 +119,8 @@ void BasicTimelineModel::loadData()
 
     d->prepare();
 
+    QMap<QString, int> eventIdsByHash;
+
     // collect events
     const QVector<QmlProfilerDataModel::QmlEventData> eventList = simpleModel->getEvents();
     foreach (const QmlProfilerDataModel::QmlEventData &event, eventList) {
@@ -128,7 +132,9 @@ void BasicTimelineModel::loadData()
         QString eventHash = QmlProfilerDataModel::getHashString(event);
 
         // store in dictionary
-        if (!d->eventHashes.contains(eventHash)) {
+        int eventId;
+        QMap<QString, int>::const_iterator i = eventIdsByHash.constFind(eventHash);
+        if (i == eventIdsByHash.cend()) {
             QmlRangeEventData rangeEventData = {
                 event.displayName,
                 event.data.join(QLatin1String(" ")),
@@ -137,11 +143,15 @@ void BasicTimelineModel::loadData()
                 lastEventId++ // event id
             };
             d->eventDict << rangeEventData;
+            eventId = d->eventHashes.size();
+            eventIdsByHash.insert(eventHash, eventId);
             d->eventHashes << eventHash;
+        } else {
+            eventId = i.value();
         }
 
         // store starttime-based instance
-        d->insert(event.startTime, event.duration, QmlRangeEventStartInstance(d->eventHashes.indexOf(eventHash)));
+        d->insert(event.startTime, event.duration, QmlRangeEventStartInstance(eventId));
 
         d->modelManager->modelProxyCountUpdated(d->modelId, d->count(), eventList.count() * 6);
     }
@@ -327,7 +337,7 @@ const QString BasicTimelineModel::categoryLabel(int categoryIndex) const
     case 2: return QCoreApplication::translate("MainView", "Creating"); break;
     case 3: return QCoreApplication::translate("MainView", "Binding"); break;
     case 4: return QCoreApplication::translate("MainView", "Handling Signal"); break;
-    case 5: return QCoreApplication::translate("MainView", "Javascript"); break;
+    case 5: return QCoreApplication::translate("MainView", "JavaScript"); break;
     default: return QString();
     }
 }
@@ -371,8 +381,7 @@ int BasicTimelineModel::getBindingLoopDest(int index) const
 
 QColor BasicTimelineModel::getColor(int index) const
 {
-    int ndx = getEventId(index);
-    return QColor::fromHsl((ndx*25)%360, 76, 166);
+    return getEventColor(index);
 }
 
 const QVariantList BasicTimelineModel::getLabelsForCategory(int category) const

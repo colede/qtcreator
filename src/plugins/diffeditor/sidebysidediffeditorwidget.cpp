@@ -28,6 +28,9 @@
 ****************************************************************************/
 
 #include "sidebysidediffeditorwidget.h"
+#include "diffeditorguicontroller.h"
+#include "diffutils.h"
+
 #include <QPlainTextEdit>
 #include <QVBoxLayout>
 #include <QPlainTextDocumentLayout>
@@ -64,290 +67,7 @@ using namespace TextEditor;
 
 namespace DiffEditor {
 
-class TextLineData {
-public:
-    enum TextLineType {
-        TextLine,
-        Separator,
-        Invalid
-    };
-    TextLineData() : textLineType(Invalid), changed(true) {}
-    TextLineData(const QString &txt) : textLineType(TextLine), text(txt), changed(true) {}
-    TextLineData(TextLineType t) : textLineType(t), changed(true) {}
-    TextLineType textLineType;
-    QString text;
-    bool changed; // true if anything was changed in this line (inserted or removed), taking whitespaces into account
-};
-
-class RowData {
-public:
-    RowData(const TextLineData &l)
-        : leftLine(l), rightLine(l) {}
-    RowData(const TextLineData &l, const TextLineData &r)
-        : leftLine(l), rightLine(r) {}
-    TextLineData leftLine;
-    TextLineData rightLine;
-};
-
-class ChunkData {
-public:
-    ChunkData() : contextChunk(false) {}
-    QList<RowData> rows;
-    bool contextChunk;
-    QMap<int, int> changedLeftPositions; // counting from the beginning of the chunk
-    QMap<int, int> changedRightPositions; // counting from the beginning of the chunk
-};
-
-class FileData {
-public:
-    FileData() {}
-    FileData(const ChunkData &chunkData) { chunks.append(chunkData); }
-    QList<ChunkData> chunks;
-    DiffEditorController::DiffFileInfo leftFileInfo;
-    DiffEditorController::DiffFileInfo rightFileInfo;
-};
-
-//////////////////////
-
-static QList<TextLineData> assemblyRows(const QStringList &lines,
-                                        const QMap<int, int> &lineSpans,
-                                        const QMap<int, bool> &equalLines,
-                                        const QMap<int, int> &changedPositions,
-                                        QMap<int, int> *outputChangedPositions)
-{
-    QList<TextLineData> data;
-
-    int previousSpanOffset = 0;
-    int spanOffset = 0;
-    int pos = 0;
-    bool usePreviousSpanOffsetForStartPosition = false;
-    QMap<int, int>::ConstIterator changedIt = changedPositions.constBegin();
-    QMap<int, int>::ConstIterator changedEnd = changedPositions.constEnd();
-    const int lineCount = lines.count();
-    for (int i = 0; i <= lineCount; i++) {
-        for (int j = 0; j < lineSpans.value(i); j++) {
-            data.append(TextLineData(TextLineData::Separator));
-            spanOffset++;
-        }
-        if (i < lineCount) {
-            const int textLength = lines.at(i).count() + 1;
-            pos += textLength;
-            data.append(lines.at(i));
-            if (equalLines.contains(i))
-                data.last().changed = false;
-        }
-        while (changedIt != changedEnd) {
-            if (changedIt.key() >= pos)
-                break;
-
-            if (changedIt.value() >= pos) {
-                usePreviousSpanOffsetForStartPosition = true;
-                previousSpanOffset = spanOffset;
-                break;
-            }
-
-            const int startSpanOffset = usePreviousSpanOffsetForStartPosition
-                    ? previousSpanOffset : spanOffset;
-            usePreviousSpanOffsetForStartPosition = false;
-
-            const int startPos = changedIt.key() + startSpanOffset;
-            const int endPos = changedIt.value() + spanOffset;
-            if (outputChangedPositions)
-                outputChangedPositions->insert(startPos, endPos);
-            ++changedIt;
-        }
-    }
-    return data;
-}
-
-static void handleLine(const QStringList &newLines,
-                       int line,
-                       QStringList *lines,
-                       int *lineNumber,
-                       int *charNumber)
-{
-    if (line < newLines.count()) {
-        const QString text = newLines.at(line);
-        if (lines->isEmpty() || line > 0) {
-            if (line > 0)
-                ++*lineNumber;
-            lines->append(text);
-        } else {
-            lines->last() += text;
-        }
-        *charNumber += text.count();
-    }
-}
-
-static bool lastLinesEqual(const QStringList &leftLines,
-                           const QStringList &rightLines)
-{
-    const bool leftLineEqual = leftLines.count()
-            ? leftLines.last().isEmpty()
-            : true;
-    const bool rightLineEqual = rightLines.count()
-            ? rightLines.last().isEmpty()
-            : true;
-    return leftLineEqual && rightLineEqual;
-}
-
-/*
- * leftDiffList can contain only deletions and equalities,
- * while rightDiffList can contain only insertions and equalities.
- * The number of equalities on both lists must be the same.
-*/
-static ChunkData calculateOriginalData(const QList<Diff> &leftDiffList,
-                                       const QList<Diff> &rightDiffList)
-{
-    ChunkData chunkData;
-
-    int i = 0;
-    int j = 0;
-
-    QStringList leftLines;
-    QStringList rightLines;
-
-    // <start position, end position>
-    QMap<int, int> leftChangedPositions;
-    QMap<int, int> rightChangedPositions;
-    // <line number, span count>
-    QMap<int, int> leftSpans;
-    QMap<int, int> rightSpans;
-    // <line number, dummy>
-    QMap<int, bool> leftEqualLines;
-    QMap<int, bool> rightEqualLines;
-
-    int leftLineNumber = 0;
-    int rightLineNumber = 0;
-    int leftCharNumber = 0;
-    int rightCharNumber = 0;
-    int leftLineAligned = -1;
-    int rightLineAligned = -1;
-    bool lastLineEqual = true;
-
-    while (i <= leftDiffList.count() && j <= rightDiffList.count()) {
-        const Diff leftDiff = i < leftDiffList.count()
-                ? leftDiffList.at(i)
-                : Diff(Diff::Equal);
-        const Diff rightDiff = j < rightDiffList.count()
-                ? rightDiffList.at(j)
-                : Diff(Diff::Equal);
-
-        if (leftDiff.command == Diff::Delete) {
-            // process delete
-            const int oldPosition = leftCharNumber + leftLineNumber;
-            const QStringList newLeftLines = leftDiff.text.split(QLatin1Char('\n'));
-            for (int line = 0; line < newLeftLines.count(); line++)
-                handleLine(newLeftLines, line, &leftLines, &leftLineNumber, &leftCharNumber);
-            const int newPosition = leftCharNumber + leftLineNumber;
-            leftChangedPositions.insert(oldPosition, newPosition);
-            lastLineEqual = lastLinesEqual(leftLines, rightLines);
-            i++;
-        }
-        if (rightDiff.command == Diff::Insert) {
-            // process insert
-            const int oldPosition = rightCharNumber + rightLineNumber;
-            const QStringList newRightLines = rightDiff.text.split(QLatin1Char('\n'));
-            for (int line = 0; line < newRightLines.count(); line++)
-                handleLine(newRightLines, line, &rightLines, &rightLineNumber, &rightCharNumber);
-            const int newPosition = rightCharNumber + rightLineNumber;
-            rightChangedPositions.insert(oldPosition, newPosition);
-            lastLineEqual = lastLinesEqual(leftLines, rightLines);
-            j++;
-        }
-        if (leftDiff.command == Diff::Equal && rightDiff.command == Diff::Equal) {
-            // process equal
-            const QStringList newLeftLines = leftDiff.text.split(QLatin1Char('\n'));
-            const QStringList newRightLines = rightDiff.text.split(QLatin1Char('\n'));
-
-            int line = 0;
-
-            while (line < qMax(newLeftLines.count(), newRightLines.count())) {
-                handleLine(newLeftLines, line, &leftLines, &leftLineNumber, &leftCharNumber);
-                handleLine(newRightLines, line, &rightLines, &rightLineNumber, &rightCharNumber);
-
-                const int commonLineCount = qMin(newLeftLines.count(), newRightLines.count());
-                if (line < commonLineCount) {
-                    // try to align
-                    const int leftDifference = leftLineNumber - leftLineAligned;
-                    const int rightDifference = rightLineNumber - rightLineAligned;
-
-                    if (leftDifference && rightDifference) {
-                        bool doAlign = true;
-                        if (line == 0 // omit alignment when first lines of equalities are empty
-                                && (newLeftLines.at(0).isEmpty() || newRightLines.at(0).isEmpty())) {
-                            doAlign = false;
-                        }
-
-                        if (line == commonLineCount - 1) {
-                            // omit alignment when last lines of equalities are empty
-                            if (leftLines.last().isEmpty() || rightLines.last().isEmpty())
-                                doAlign = false;
-
-                            // unless it's the last dummy line (don't omit in that case)
-                            if (i == leftDiffList.count() && j == rightDiffList.count())
-                                doAlign = true;
-                        }
-
-                        if (doAlign) {
-                            // align here
-                            leftLineAligned = leftLineNumber;
-                            rightLineAligned = rightLineNumber;
-
-                            // insert separators if needed
-                            if (rightDifference > leftDifference)
-                                leftSpans.insert(leftLineNumber, rightDifference - leftDifference);
-                            else if (leftDifference > rightDifference)
-                                rightSpans.insert(rightLineNumber, leftDifference - rightDifference);
-                        }
-                    }
-                }
-
-                // check if lines are equal
-                if (line < newLeftLines.count() - 1 || i == leftDiffList.count()) {
-                    // left line is equal
-                    if (line > 0 || lastLineEqual)
-                        leftEqualLines.insert(leftLineNumber, true);
-                }
-
-                if (line < newRightLines.count() - 1 || j == rightDiffList.count()) {
-                    // right line is equal
-                    if (line > 0 || lastLineEqual)
-                        rightEqualLines.insert(rightLineNumber, true);
-                }
-
-                if (line > 0)
-                    lastLineEqual = true;
-
-                line++;
-            }
-            i++;
-            j++;
-        }
-    }
-
-    QList<TextLineData> leftData = assemblyRows(leftLines,
-                                                leftSpans,
-                                                leftEqualLines,
-                                                leftChangedPositions,
-                                                &chunkData.changedLeftPositions);
-    QList<TextLineData> rightData = assemblyRows(rightLines,
-                                                 rightSpans,
-                                                 rightEqualLines,
-                                                 rightChangedPositions,
-                                                 &chunkData.changedRightPositions);
-
-    // fill ending separators
-    for (int i = leftData.count(); i < rightData.count(); i++)
-        leftData.append(TextLineData(TextLineData::Separator));
-    for (int i = rightData.count(); i < leftData.count(); i++)
-        rightData.append(TextLineData(TextLineData::Separator));
-
-    const int visualLineCount = leftData.count();
-    for (int i = 0; i < visualLineCount; i++)
-        chunkData.rows.append(RowData(leftData.at(i), rightData.at(i)));
-    return chunkData;
-}
+using namespace Internal;
 
 //////////////////////
 
@@ -358,11 +78,10 @@ public:
     SideDiffEditor(BaseTextEditorWidget *editorWidget)
         : BaseTextEditor(editorWidget)
     {
+        document()->setId("DiffEditor.SideDiffEditor");
         connect(this, SIGNAL(tooltipRequested(TextEditor::ITextEditor*,QPoint,int)),
                 this, SLOT(slotTooltipRequested(TextEditor::ITextEditor*,QPoint,int)));
     }
-
-    Core::Id id() const { return "SideDiffEditor"; }
 
 private slots:
     void slotTooltipRequested(TextEditor::ITextEditor *editor, const QPoint &globalPoint, int position);
@@ -567,6 +286,9 @@ void MultiHighlighter::highlightBlock(const QString &text)
 
     QTextBlock documentBlock = currentDocument->findBlockByNumber(
                 block.blockNumber() - m_editor->blockNumberForFileIndex(fileIndex));
+
+    if (!documentBlock.isValid())
+        return;
 
     QList<QTextLayout::FormatRange> formats = documentBlock.layout()->additionalFormats();
     setExtraAdditionalFormats(block, formats);
@@ -960,6 +682,7 @@ void SideDiffEditorWidget::drawCollapsedBlockPopup(QPainter &painter,
 
 SideBySideDiffEditorWidget::SideBySideDiffEditorWidget(QWidget *parent)
     : QWidget(parent)
+    , m_guiController(0)
     , m_controller(0)
     , m_foldingBlocker(false)
 {
@@ -1034,40 +757,49 @@ SideBySideDiffEditorWidget::~SideBySideDiffEditorWidget()
 
 }
 
-void SideBySideDiffEditorWidget::setDiffEditorController(DiffEditorController *controller)
+void SideBySideDiffEditorWidget::setDiffEditorGuiController(DiffEditorGuiController *controller)
 {
-    if (m_controller) {
+    if (m_guiController == controller)
+        return;
+
+    if (m_guiController) {
         disconnect(m_controller, SIGNAL(cleared(QString)), this, SLOT(clear(QString)));
         disconnect(m_controller, SIGNAL(diffContentsChanged(QList<DiffEditorController::DiffFilesContents>,QString)),
                 this, SLOT(setDiff(QList<DiffEditorController::DiffFilesContents>,QString)));
-        disconnect(m_controller, SIGNAL(contextLinesNumberChanged(int)),
+
+        disconnect(m_guiController, SIGNAL(contextLinesNumberChanged(int)),
                 this, SLOT(setContextLinesNumber(int)));
-        disconnect(m_controller, SIGNAL(ignoreWhitespacesChanged(bool)),
+        disconnect(m_guiController, SIGNAL(ignoreWhitespacesChanged(bool)),
                 this, SLOT(setIgnoreWhitespaces(bool)));
-        disconnect(m_controller, SIGNAL(currentDiffFileIndexChanged(int)),
+        disconnect(m_guiController, SIGNAL(currentDiffFileIndexChanged(int)),
                 this, SLOT(setCurrentDiffFileIndex(int)));
 
         clear(tr("No controller"));
     }
-    m_controller = controller;
-    if (m_controller) {
+    m_guiController = controller;
+    m_controller = 0;
+    if (m_guiController) {
+        m_controller = m_guiController->controller();
+
         connect(m_controller, SIGNAL(cleared(QString)), this, SLOT(clear(QString)));
         connect(m_controller, SIGNAL(diffContentsChanged(QList<DiffEditorController::DiffFilesContents>,QString)),
                 this, SLOT(setDiff(QList<DiffEditorController::DiffFilesContents>,QString)));
-        connect(m_controller, SIGNAL(contextLinesNumberChanged(int)),
+
+        connect(m_guiController, SIGNAL(contextLinesNumberChanged(int)),
                 this, SLOT(setContextLinesNumber(int)));
-        connect(m_controller, SIGNAL(ignoreWhitespacesChanged(bool)),
+        connect(m_guiController, SIGNAL(ignoreWhitespacesChanged(bool)),
                 this, SLOT(setIgnoreWhitespaces(bool)));
-        connect(m_controller, SIGNAL(currentDiffFileIndexChanged(int)),
+        connect(m_guiController, SIGNAL(currentDiffFileIndexChanged(int)),
                 this, SLOT(setCurrentDiffFileIndex(int)));
 
         setDiff(m_controller->diffContents(), m_controller->workingDirectory());
     }
 }
 
-DiffEditorController *SideBySideDiffEditorWidget::diffEditorController() const
+
+DiffEditorGuiController *SideBySideDiffEditorWidget::diffEditorGuiController() const
 {
-    return m_controller;
+    return m_guiController;
 }
 
 void SideBySideDiffEditorWidget::clear(const QString &message)
@@ -1098,6 +830,7 @@ void SideBySideDiffEditorWidget::setDiff(const QList<DiffList> &diffList)
     m_diffList = diffList;
     m_originalChunkData.clear();
     m_contextFileData.clear();
+    const int contextLinesNumber = m_guiController ? m_guiController->contextLinesNumber() : 3;
 
     for (int i = 0; i < m_diffList.count(); i++) {
         const DiffList &dl = m_diffList.at(i);
@@ -1106,7 +839,7 @@ void SideBySideDiffEditorWidget::setDiff(const QList<DiffList> &diffList)
         handleWhitespaces(dl.diffList, &leftDiffs, &rightDiffs);
         ChunkData chunkData = calculateOriginalData(leftDiffs, rightDiffs);
         m_originalChunkData.append(chunkData);
-        FileData fileData = calculateContextData(chunkData);
+        FileData fileData = calculateContextData(chunkData, contextLinesNumber);
         fileData.leftFileInfo = dl.leftFileInfo;
         fileData.rightFileInfo = dl.rightFileInfo;
         m_contextFileData.append(fileData);
@@ -1122,10 +855,9 @@ void SideBySideDiffEditorWidget::handleWhitespaces(const QList<Diff> &input,
         return;
 
     Differ::splitDiffList(input, leftOutput, rightOutput);
-    if (m_controller && m_controller->isIgnoreWhitespaces()) {
-        QList<Diff> leftDiffList = Differ::moveWhitespaceIntoEqualities(*leftOutput);
-        QList<Diff> rightDiffList = Differ::moveWhitespaceIntoEqualities(*rightOutput);
-
+    if (m_guiController && m_guiController->isIgnoreWhitespaces()) {
+        const QList<Diff> leftDiffList = Differ::moveWhitespaceIntoEqualities(*leftOutput);
+        const QList<Diff> rightDiffList = Differ::moveWhitespaceIntoEqualities(*rightOutput);
         Differ::diffBetweenEqualities(leftDiffList, rightDiffList, leftOutput, rightOutput);
     }
 }
@@ -1133,10 +865,11 @@ void SideBySideDiffEditorWidget::handleWhitespaces(const QList<Diff> &input,
 void SideBySideDiffEditorWidget::setContextLinesNumber(int lines)
 {
     Q_UNUSED(lines)
+    const int contextLinesNumber = m_guiController ? m_guiController->contextLinesNumber() : 3;
 
     for (int i = 0; i < m_contextFileData.count(); i++) {
         const FileData oldFileData = m_contextFileData.at(i);
-        FileData newFileData = calculateContextData(m_originalChunkData.at(i));
+        FileData newFileData = calculateContextData(m_originalChunkData.at(i), contextLinesNumber);
         newFileData.leftFileInfo = oldFileData.leftFileInfo;
         newFileData.rightFileInfo = oldFileData.rightFileInfo;
         m_contextFileData[i] = newFileData;
@@ -1168,106 +901,6 @@ void SideBySideDiffEditorWidget::setCurrentDiffFileIndex(int diffFileIndex)
 
     m_leftEditor->centerCursor();
     m_rightEditor->centerCursor();
-}
-
-FileData SideBySideDiffEditorWidget::calculateContextData(const ChunkData &originalData) const
-{
-    const int contextLinesNumber = m_controller ? m_controller->contextLinesNumber() : 3;
-    if (contextLinesNumber < 0)
-        return FileData(originalData);
-
-    const int joinChunkThreshold = 1;
-
-    FileData fileData;
-    QMap<int, bool> hiddenRows;
-    int i = 0;
-    while (i < originalData.rows.count()) {
-        const RowData &row = originalData.rows[i];
-        if (!row.leftLine.changed && !row.rightLine.changed) {
-            // count how many equal
-            int equalRowStart = i;
-            i++;
-            while (i < originalData.rows.count()) {
-                const RowData originalRow = originalData.rows.at(i);
-                if (originalRow.leftLine.changed || originalRow.rightLine.changed)
-                    break;
-                i++;
-            }
-            const bool first = equalRowStart == 0; // includes first line?
-            const bool last = i == originalData.rows.count(); // includes last line?
-
-            const int firstLine = first ? 0 : equalRowStart + contextLinesNumber;
-            const int lastLine = last ? originalData.rows.count() : i - contextLinesNumber;
-
-            if (firstLine < lastLine - joinChunkThreshold) {
-                for (int j = firstLine; j < lastLine; j++) {
-                    hiddenRows.insert(j, true);
-                }
-            }
-        } else {
-            // iterate to the next row
-            i++;
-        }
-    }
-    i = 0;
-    int leftCharCounter = 0;
-    int rightCharCounter = 0;
-    QMap<int, int>::ConstIterator leftChangedIt = originalData.changedLeftPositions.constBegin();
-    QMap<int, int>::ConstIterator rightChangedIt = originalData.changedRightPositions.constBegin();
-    while (i < originalData.rows.count()) {
-        if (!hiddenRows.contains(i)) {
-            ChunkData chunkData;
-            int leftOffset = leftCharCounter;
-            int rightOffset = rightCharCounter;
-            chunkData.contextChunk = false;
-            while (i < originalData.rows.count()) {
-                if (hiddenRows.contains(i))
-                    break;
-                RowData rowData = originalData.rows.at(i);
-                chunkData.rows.append(rowData);
-
-                leftCharCounter += rowData.leftLine.text.count() + 1; // +1 for '\n'
-                rightCharCounter += rowData.rightLine.text.count() + 1; // +1 for '\n'
-                i++;
-            }
-            while (leftChangedIt != originalData.changedLeftPositions.constEnd()) {
-                if (leftChangedIt.key() < leftOffset
-                        || leftChangedIt.key() > leftCharCounter)
-                    break;
-
-                const int startPos = leftChangedIt.key();
-                const int endPos = leftChangedIt.value();
-                chunkData.changedLeftPositions.insert(startPos - leftOffset, endPos - leftOffset);
-                leftChangedIt++;
-            }
-            while (rightChangedIt != originalData.changedRightPositions.constEnd()) {
-                if (rightChangedIt.key() < rightOffset
-                        || rightChangedIt.key() > rightCharCounter)
-                    break;
-
-                const int startPos = rightChangedIt.key();
-                const int endPos = rightChangedIt.value();
-                chunkData.changedRightPositions.insert(startPos - rightOffset, endPos - rightOffset);
-                rightChangedIt++;
-            }
-            fileData.chunks.append(chunkData);
-        } else {
-            ChunkData chunkData;
-            chunkData.contextChunk = true;
-            while (i < originalData.rows.count()) {
-                if (!hiddenRows.contains(i))
-                    break;
-                RowData rowData = originalData.rows.at(i);
-                chunkData.rows.append(rowData);
-
-                leftCharCounter += rowData.leftLine.text.count() + 1; // +1 for '\n'
-                rightCharCounter += rowData.rightLine.text.count() + 1; // +1 for '\n'
-                i++;
-            }
-            fileData.chunks.append(chunkData);
-        }
-    }
-    return fileData;
 }
 
 void SideBySideDiffEditorWidget::showDiff()
@@ -1330,6 +963,8 @@ void SideBySideDiffEditorWidget::showDiff()
                 blockNumber++;
             }
         }
+        leftText.replace(QLatin1Char('\r'), QLatin1Char(' '));
+        rightText.replace(QLatin1Char('\r'), QLatin1Char(' '));
         leftTexts += leftText;
         rightTexts += rightText;
         leftDocs.append(qMakePair(contextFileData.leftFileInfo, leftText));
@@ -1407,29 +1042,6 @@ void SideBySideDiffEditorWidget::showDiff()
     m_rightEditor->updateFoldingHighlight(QPoint(-1, -1));
 }
 
-QList<QTextEdit::ExtraSelection> SideBySideDiffEditorWidget::colorPositions(
-        const QTextCharFormat &format,
-        QTextCursor &cursor,
-        const QMap<int, int> &positions) const
-{
-    QList<QTextEdit::ExtraSelection> lineSelections;
-
-    cursor.setPosition(0);
-    QMapIterator<int, int> itPositions(positions);
-    while (itPositions.hasNext()) {
-        itPositions.next();
-
-        cursor.setPosition(itPositions.key());
-        cursor.setPosition(itPositions.value(), QTextCursor::KeepAnchor);
-
-        QTextEdit::ExtraSelection selection;
-        selection.cursor = cursor;
-        selection.format = format;
-        lineSelections.append(selection);
-    }
-    return lineSelections;
-}
-
 void SideBySideDiffEditorWidget::colorDiff(const QList<FileData> &fileDataList)
 {
     QPalette pal = m_leftEditor->extraArea()->palette();
@@ -1457,48 +1069,35 @@ void SideBySideDiffEditorWidget::colorDiff(const QList<FileData> &fileDataList)
     int rightLastSkippedBlockStartPos = 0;
 
     for (int i = 0; i < fileDataList.count(); i++) {
+        const FileData &fileData = fileDataList.at(i);
         leftFilePos[leftPos] = leftPos + 1;
         rightFilePos[rightPos] = rightPos + 1;
         leftPos++; // for file line
         rightPos++; // for file line
-        const FileData &fileData = fileDataList.at(i);
 
         for (int j = 0; j < fileData.chunks.count(); j++) {
-            ChunkData chunkData = fileData.chunks.at(j);
+            const ChunkData &chunkData = fileData.chunks.at(j);
             if (chunkData.contextChunk) {
                 leftChunkPos[leftPos] = leftPos + 1;
                 rightChunkPos[rightPos] = rightPos + 1;
                 leftPos++; // for chunk line
                 rightPos++; // for chunk line
             }
-            const int leftFileOffset = leftPos;
-            const int rightFileOffset = rightPos;
             leftLastDiffBlockStartPos = leftPos;
             rightLastDiffBlockStartPos = rightPos;
             leftLastSkippedBlockStartPos = leftPos;
             rightLastSkippedBlockStartPos = rightPos;
 
-            QMapIterator<int, int> itLeft(chunkData.changedLeftPositions);
-            while (itLeft.hasNext()) {
-                itLeft.next();
-
-                leftCharPos[itLeft.key() + leftFileOffset] = itLeft.value() + leftFileOffset;
-            }
-
-            QMapIterator<int, int> itRight(chunkData.changedRightPositions);
-            while (itRight.hasNext()) {
-                itRight.next();
-
-                rightCharPos[itRight.key() + rightFileOffset] = itRight.value() + rightFileOffset;
-            }
-
             for (int k = 0; k < chunkData.rows.count(); k++) {
-                RowData rowData = chunkData.rows.at(k);
+                const RowData &rowData = chunkData.rows.at(k);
+
+                addChangedPositions(leftPos, rowData.leftLine.changedPositions, &leftCharPos);
+                addChangedPositions(rightPos, rowData.rightLine.changedPositions, &rightCharPos);
 
                 leftPos += rowData.leftLine.text.count() + 1; // +1 for '\n'
                 rightPos += rowData.rightLine.text.count() + 1; // +1 for '\n'
 
-                if (rowData.leftLine.changed) {
+                if (!rowData.equal) {
                     if (rowData.leftLine.textLineType == TextLineData::TextLine) {
                         leftLinePos[leftLastDiffBlockStartPos] = leftPos;
                         leftLastSkippedBlockStartPos = leftPos;
@@ -1506,12 +1105,6 @@ void SideBySideDiffEditorWidget::colorDiff(const QList<FileData> &fileDataList)
                         leftSkippedPos[leftLastSkippedBlockStartPos] = leftPos;
                         leftLastDiffBlockStartPos = leftPos;
                     }
-                } else {
-                    leftLastDiffBlockStartPos = leftPos;
-                    leftLastSkippedBlockStartPos = leftPos;
-                }
-
-                if (rowData.rightLine.changed) {
                     if (rowData.rightLine.textLineType == TextLineData::TextLine) {
                         rightLinePos[rightLastDiffBlockStartPos] = rightPos;
                         rightLastSkippedBlockStartPos = rightPos;
@@ -1520,6 +1113,8 @@ void SideBySideDiffEditorWidget::colorDiff(const QList<FileData> &fileDataList)
                         rightLastDiffBlockStartPos = rightPos;
                     }
                 } else {
+                    leftLastDiffBlockStartPos = leftPos;
+                    leftLastSkippedBlockStartPos = leftPos;
                     rightLastDiffBlockStartPos = rightPos;
                     rightLastSkippedBlockStartPos = rightPos;
                 }
@@ -1530,38 +1125,22 @@ void SideBySideDiffEditorWidget::colorDiff(const QList<FileData> &fileDataList)
     QTextCursor leftCursor = m_leftEditor->textCursor();
     QTextCursor rightCursor = m_rightEditor->textCursor();
 
-    QList<QTextEdit::ExtraSelection> leftSelections
-            = colorPositions(m_leftLineFormat, leftCursor, leftLinePos);
-    leftSelections
-            += colorPositions(spanLineFormat, leftCursor, leftSkippedPos);
-    leftSelections
-            += colorPositions(m_chunkLineFormat, leftCursor, leftChunkPos);
-    leftSelections
-            += colorPositions(m_fileLineFormat, leftCursor, leftFilePos);
-    leftSelections
-            += colorPositions(m_leftCharFormat, leftCursor, leftCharPos);
+    QList<QTextEdit::ExtraSelection> leftSelections;
+    leftSelections += colorPositions(m_leftLineFormat, leftCursor, leftLinePos);
+    leftSelections += colorPositions(m_leftCharFormat, leftCursor, leftCharPos);
+    leftSelections += colorPositions(spanLineFormat, leftCursor, leftSkippedPos);
+    leftSelections += colorPositions(m_chunkLineFormat, leftCursor, leftChunkPos);
+    leftSelections += colorPositions(m_fileLineFormat, leftCursor, leftFilePos);
 
-    QList<QTextEdit::ExtraSelection> rightSelections
-            = colorPositions(m_rightLineFormat, rightCursor, rightLinePos);
-    rightSelections
-            += colorPositions(spanLineFormat, rightCursor, rightSkippedPos);
-    rightSelections
-            += colorPositions(m_chunkLineFormat, rightCursor, rightChunkPos);
-    rightSelections
-            += colorPositions(m_fileLineFormat, rightCursor, rightFilePos);
-    rightSelections
-            += colorPositions(m_rightCharFormat, rightCursor, rightCharPos);
+    QList<QTextEdit::ExtraSelection> rightSelections;
+    rightSelections += colorPositions(m_rightLineFormat, rightCursor, rightLinePos);
+    rightSelections += colorPositions(m_rightCharFormat, rightCursor, rightCharPos);
+    rightSelections += colorPositions(spanLineFormat, rightCursor, rightSkippedPos);
+    rightSelections += colorPositions(m_chunkLineFormat, rightCursor, rightChunkPos);
+    rightSelections += colorPositions(m_fileLineFormat, rightCursor, rightFilePos);
 
     m_leftEditor->setExtraSelections(BaseTextEditorWidget::OtherSelection, leftSelections);
     m_rightEditor->setExtraSelections(BaseTextEditorWidget::OtherSelection, rightSelections);
-}
-
-static QTextCharFormat fullWidthFormatForTextStyle(const TextEditor::FontSettings &fontSettings,
-                                          TextEditor::TextStyle textStyle)
-{
-    QTextCharFormat format = fontSettings.toTextCharFormat(textStyle);
-    format.setProperty(QTextFormat::FullWidthSelection, true);
-    return format;
 }
 
 void SideBySideDiffEditorWidget::setFontSettings(const TextEditor::FontSettings &fontSettings)
@@ -1605,8 +1184,7 @@ void SideBySideDiffEditorWidget::slotLeftJumpToOriginalFileRequested(int diffFil
                 if (rowData.rightLine.textLineType == TextLineData::TextLine)
                     rightLineNumber++;
                 if (leftLineNumber == lineNumber) {
-                    int colNr = !rowData.leftLine.changed && !rowData.rightLine.changed
-                            ? columnNumber : 0;
+                    int colNr = rowData.equal ? columnNumber : 0;
                     jumpToOriginalFile(leftFileName, rightLineNumber, colNr);
                     return;
                 }
@@ -1652,13 +1230,13 @@ void SideBySideDiffEditorWidget::rightVSliderChanged()
 
 void SideBySideDiffEditorWidget::leftHSliderChanged()
 {
-    if (!m_controller || m_controller->horizontalScrollBarSynchronization())
+    if (!m_guiController || m_guiController->horizontalScrollBarSynchronization())
         m_rightEditor->horizontalScrollBar()->setValue(m_leftEditor->horizontalScrollBar()->value());
 }
 
 void SideBySideDiffEditorWidget::rightHSliderChanged()
 {
-    if (!m_controller || m_controller->horizontalScrollBarSynchronization())
+    if (!m_guiController || m_guiController->horizontalScrollBarSynchronization())
         m_leftEditor->horizontalScrollBar()->setValue(m_rightEditor->horizontalScrollBar()->value());
 }
 
@@ -1667,10 +1245,10 @@ void SideBySideDiffEditorWidget::leftCursorPositionChanged()
     leftVSliderChanged();
     leftHSliderChanged();
 
-    if (!m_controller)
+    if (!m_guiController)
         return;
 
-    m_controller->setCurrentDiffFileIndex(m_leftEditor->fileIndexForBlockNumber(m_leftEditor->textCursor().blockNumber()));
+    m_guiController->setCurrentDiffFileIndex(m_leftEditor->fileIndexForBlockNumber(m_leftEditor->textCursor().blockNumber()));
 }
 
 void SideBySideDiffEditorWidget::rightCursorPositionChanged()
@@ -1678,10 +1256,10 @@ void SideBySideDiffEditorWidget::rightCursorPositionChanged()
     rightVSliderChanged();
     rightHSliderChanged();
 
-    if (!m_controller)
+    if (!m_guiController)
         return;
 
-    m_controller->setCurrentDiffFileIndex(m_rightEditor->fileIndexForBlockNumber(m_rightEditor->textCursor().blockNumber()));
+    m_guiController->setCurrentDiffFileIndex(m_rightEditor->fileIndexForBlockNumber(m_rightEditor->textCursor().blockNumber()));
 }
 
 void SideBySideDiffEditorWidget::leftDocumentSizeChanged()
@@ -1823,35 +1401,6 @@ void SideBySideDiffEditorWidget::synchronizeFoldings(SideDiffEditorWidget *sourc
     m_foldingBlocker = false;
 }
 
-
 } // namespace DiffEditor
-
-#ifdef WITH_TESTS
-#include <QTest>
-
-void DiffEditor::SideBySideDiffEditorWidget::testAssemblyRows()
-{
-    QStringList lines;
-    lines << QLatin1String("abcd efgh"); // line 0
-    lines << QLatin1String("ijkl mnop"); // line 1
-
-    QMap<int, int> lineSpans;
-    lineSpans[1] = 6; // before line 1 insert 6 span lines
-
-    QMap<int, int> changedPositions;
-    changedPositions[5] = 14; // changed text from position 5 to position 14, occupy 9 characters: "efgh\nijkl"
-
-    QMap<int, bool> equalLines; // no equal lines
-
-    QMap<int, int> expectedChangedPositions;
-    expectedChangedPositions[5] = 20; // "efgh\n[\n\n\n\n\n\n]ijkl" - [\n] means inserted span
-
-    QMap<int, int> outputChangedPositions;
-
-    assemblyRows(lines, lineSpans, equalLines, changedPositions, &outputChangedPositions);
-    QVERIFY(outputChangedPositions == expectedChangedPositions);
-}
-
-#endif // WITH_TESTS
 
 #include "sidebysidediffeditorwidget.moc"

@@ -1,5 +1,4 @@
 QT += network xml
-PROVIDER = BlackBerry
 
 include(../../qtcreatorplugin.pri)
 
@@ -103,7 +102,12 @@ SOURCES += qnxplugin.cpp \
     blackberrysetuppage.cpp \
     blackberrysetupwidget.cpp \
     blackberryruntimeconfiguration.cpp \
-    blackberryapilevelconfiguration.cpp
+    blackberryapilevelconfiguration.cpp \
+    blackberrypotentialkit.cpp \
+    bardescriptorfilenode.cpp \
+    bardescriptorfilenodemanager.cpp \
+    qnxconfiguration.cpp \
+    qnxbaseconfiguration.cpp
 
 HEADERS += qnxplugin.h\
     qnxconstants.h \
@@ -206,7 +210,12 @@ HEADERS += qnxplugin.h\
     blackberrysetuppage.h \
     blackberrysetupwidget.h \
     blackberryruntimeconfiguration.h \
-    blackberryapilevelconfiguration.h
+    blackberryapilevelconfiguration.h \
+    blackberrypotentialkit.h \
+    bardescriptorfilenode.h \
+    bardescriptorfilenodemanager.h \
+    qnxconfiguration.h \
+    qnxbaseconfiguration.h
 
 FORMS += \
     blackberrydeviceconfigurationwizardsetuppage.ui \

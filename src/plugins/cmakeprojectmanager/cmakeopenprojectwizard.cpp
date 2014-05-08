@@ -31,6 +31,7 @@
 #include "cmakeprojectmanager.h"
 #include "cmakebuildconfiguration.h"
 #include "cmakebuildinfo.h"
+#include "generatorinfo.h"
 
 #include <coreplugin/icore.h>
 #include <utils/hostosinfo.h>
@@ -70,152 +71,13 @@ using namespace CMakeProjectManager::Internal;
 //                                   |--> Page: Ask for cmd options, run generator
 
 
-namespace CMakeProjectManager {
-namespace Internal {
-    class GeneratorInfo
-    {
-        Q_DECLARE_TR_FUNCTIONS(CMakeProjectManager::Internal::GeneratorInfo)
-    public:
-        enum Ninja { NoNinja, OfferNinja, ForceNinja };
-        static QList<GeneratorInfo> generatorInfosFor(ProjectExplorer::Kit *k, Ninja n, bool preferNinja, bool hasCodeBlocks);
-
-        GeneratorInfo();
-        explicit GeneratorInfo(ProjectExplorer::Kit *kit, bool ninja = false);
-
-        ProjectExplorer::Kit *kit() const;
-        bool isNinja() const;
-
-        QString displayName() const;
-        QByteArray generatorArgument() const;
-        QByteArray generator() const;
-
-    private:
-        ProjectExplorer::Kit *m_kit;
-        bool m_isNinja;
-    };
-}
-}
-
-Q_DECLARE_METATYPE(CMakeProjectManager::Internal::GeneratorInfo);
-
-GeneratorInfo::GeneratorInfo()
-    : m_kit(0), m_isNinja(false)
-{}
-
-GeneratorInfo::GeneratorInfo(ProjectExplorer::Kit *kit, bool ninja)
-    : m_kit(kit), m_isNinja(ninja)
-{}
-
-ProjectExplorer::Kit *GeneratorInfo::kit() const
-{
-    return m_kit;
-}
-
-bool GeneratorInfo::isNinja() const {
-    return m_isNinja;
-}
-
-QByteArray GeneratorInfo::generator() const
-{
-    if (!m_kit)
-        return QByteArray();
-    ProjectExplorer::ToolChain *tc = ProjectExplorer::ToolChainKitInformation::toolChain(m_kit);
-    ProjectExplorer::Abi targetAbi = tc->targetAbi();
-    if (m_isNinja) {
-        return "Ninja";
-    } else if (targetAbi.os() == ProjectExplorer::Abi::WindowsOS) {
-        if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2005Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2008Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2010Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2012Flavor) {
-            return "NMake Makefiles";
-        } else if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMSysFlavor) {
-            if (Utils::HostOsInfo::isWindowsHost())
-                return "MinGW Makefiles";
-            else
-                return "Unix Makefiles";
-        }
-    }
-    return "Unix Makefiles";
-}
-
-QByteArray GeneratorInfo::generatorArgument() const
-{
-    QByteArray tmp = generator();
-    if (tmp.isEmpty())
-        return tmp;
-    return QByteArray("-GCodeBlocks - ") + tmp;
-}
-
-QString GeneratorInfo::displayName() const
-{
-    if (!m_kit)
-        return QString();
-    if (m_isNinja)
-        return tr("Ninja (%1)").arg(m_kit->displayName());
-    ProjectExplorer::ToolChain *tc = ProjectExplorer::ToolChainKitInformation::toolChain(m_kit);
-    ProjectExplorer::Abi targetAbi = tc->targetAbi();
-    if (targetAbi.os() == ProjectExplorer::Abi::WindowsOS) {
-        if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2005Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2008Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2010Flavor
-                || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2012Flavor) {
-            return tr("NMake Generator (%1)").arg(m_kit->displayName());
-        } else if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMSysFlavor) {
-            if (Utils::HostOsInfo::isWindowsHost())
-                return tr("MinGW Generator (%1)").arg(m_kit->displayName());
-            else
-                return tr("Unix Generator (%1)").arg(m_kit->displayName());
-        }
-    } else {
-        // Non windows
-        return tr("Unix Generator (%1)").arg(m_kit->displayName());
-    }
-    return QString();
-}
-
-QList<GeneratorInfo> GeneratorInfo::generatorInfosFor(ProjectExplorer::Kit *k, Ninja n, bool preferNinja, bool hasCodeBlocks)
-{
-    QList<GeneratorInfo> results;
-    ProjectExplorer::ToolChain *tc = ProjectExplorer::ToolChainKitInformation::toolChain(k);
-    if (!tc)
-        return results;
-    Core::Id deviceType = ProjectExplorer::DeviceTypeKitInformation::deviceTypeId(k);
-    if (deviceType !=  ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE
-            && deviceType != RemoteLinux::Constants::GenericLinuxOsType)
-        return results;
-    ProjectExplorer::Abi targetAbi = tc->targetAbi();
-    if (n != ForceNinja) {
-        if (targetAbi.os() == ProjectExplorer::Abi::WindowsOS) {
-            if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2005Flavor
-                    || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2008Flavor
-                    || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2010Flavor
-                    || targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMsvc2012Flavor) {
-                if (hasCodeBlocks)
-                    results << GeneratorInfo(k);
-            } else if (targetAbi.osFlavor() == ProjectExplorer::Abi::WindowsMSysFlavor) {
-                results << GeneratorInfo(k);
-            }
-        } else {
-            // Non windows
-            results << GeneratorInfo(k);
-        }
-    }
-    if (n != NoNinja) {
-        if (preferNinja)
-            results.prepend(GeneratorInfo(k, true));
-        else
-            results.append(GeneratorInfo(k, true));
-    }
-    return results;
-}
-
 //////////////
 /// CMakeOpenProjectWizard
 //////////////
 
-CMakeOpenProjectWizard::CMakeOpenProjectWizard(CMakeManager *cmakeManager, const QString &sourceDirectory, Utils::Environment env)
-    : m_cmakeManager(cmakeManager),
+CMakeOpenProjectWizard::CMakeOpenProjectWizard(QWidget *parent, CMakeManager *cmakeManager, const QString &sourceDirectory, Utils::Environment env)
+    : Utils::Wizard(parent),
+      m_cmakeManager(cmakeManager),
       m_sourceDirectory(sourceDirectory),
       m_environment(env),
       m_useNinja(false),
@@ -240,9 +102,10 @@ CMakeOpenProjectWizard::CMakeOpenProjectWizard(CMakeManager *cmakeManager, const
     init();
 }
 
-CMakeOpenProjectWizard::CMakeOpenProjectWizard(CMakeManager *cmakeManager, CMakeOpenProjectWizard::Mode mode,
+CMakeOpenProjectWizard::CMakeOpenProjectWizard(QWidget *parent, CMakeManager *cmakeManager, CMakeOpenProjectWizard::Mode mode,
                                                const CMakeBuildInfo *info)
-    : m_cmakeManager(cmakeManager),
+    : Utils::Wizard(parent),
+      m_cmakeManager(cmakeManager),
       m_sourceDirectory(info->sourceDirectory),
       m_environment(info->environment),
       m_useNinja(info->useNinja),
@@ -390,7 +253,7 @@ NoKitPage::NoKitPage(CMakeOpenProjectWizard *cmakeWizard)
     layout->addWidget(m_descriptionLabel);
 
     m_optionsButton = new QPushButton;
-    m_optionsButton->setText(tr("Show Options"));
+    m_optionsButton->setText(Core::ICore::msgShowOptionsDialog());
 
     connect(m_optionsButton, SIGNAL(clicked()),
             this, SLOT(showOptions()));
@@ -566,6 +429,9 @@ void CMakeRunPage::initWidgets()
     m_generatorComboBox = new QComboBox(this);
     fl->addRow(tr("Generator:"), m_generatorComboBox);
 
+    m_generatorExtraText = new QLabel(this);
+    fl->addRow(m_generatorExtraText);
+
     m_runCMake = new QPushButton(this);
     m_runCMake->setText(tr("Run CMake"));
     connect(m_runCMake, SIGNAL(clicked()), this, SLOT(runCMake()));
@@ -687,6 +553,15 @@ void CMakeRunPage::initializePage()
                     m_generatorComboBox->addItem(info.displayName(), qVariantFromValue(info));
         }
 
+
+        if (!m_generatorComboBox->count()) {
+            m_generatorExtraText->setVisible(true);
+            m_generatorExtraText->setText(tr("The cached generator %1 is incompatible with the configured kits.")
+                                          .arg(QString::fromLatin1(cachedGenerator)));
+        } else {
+            m_generatorExtraText->setVisible(false);
+        }
+
         m_generatorComboBox->setCurrentIndex(defaultIndex);
     } else {
         // Note: We don't compare the actually cached generator to what is set in the buildconfiguration
@@ -736,7 +611,7 @@ void CMakeRunPage::runCMake()
     m_cmakeWizard->setKit(generatorInfo.kit());
     m_cmakeWizard->setUseNinja(generatorInfo.isNinja());
 
-    // If mode is initial the user chooses the kit, otherwise it's already choosen
+    // If mode is initial the user chooses the kit, otherwise it's already chosen
     // and the environment already contains the kit
     if (m_mode == Initial)
         generatorInfo.kit()->addToEnvironment(env);

@@ -31,6 +31,7 @@
 #define CPPCOMPLETIONASSIST_H
 
 #include "cppcompletionassistprovider.h"
+#include "cppmodelmanagerinterface.h"
 
 #include <cplusplus/Icons.h>
 #include <cplusplus/TypeOfExpression.h>
@@ -39,6 +40,7 @@
 #  include <cplusplus/Symbol.h>
 #endif
 
+#include <texteditor/basetexteditor.h>
 #include <texteditor/codeassist/basicproposalitemlistmodel.h>
 #include <texteditor/codeassist/defaultassistinterface.h>
 #include <texteditor/codeassist/iassistprocessor.h>
@@ -135,6 +137,7 @@ private:
     bool completeScope(const QList<CPlusPlus::LookupItem> &results);
     void completeNamespace(CPlusPlus::ClassOrNamespace *binding);
     void completeClass(CPlusPlus::ClassOrNamespace *b, bool staticLookup = true);
+    void addClassMembersToCompletion(CPlusPlus::Scope *scope, bool staticLookup);
     bool completeQtMethod(const QList<CPlusPlus::LookupItem> &results, bool wantSignals);
     bool completeSignal(const QList<CPlusPlus::LookupItem> &results)
     { return completeQtMethod(results, true); }
@@ -170,6 +173,18 @@ private:
 class CppCompletionAssistInterface : public TextEditor::DefaultAssistInterface
 {
 public:
+    CppCompletionAssistInterface(TextEditor::BaseTextEditor *editor,
+                                 QTextDocument *textDocument,
+                                 int position,
+                                 TextEditor::AssistReason reason,
+                                 const CppModelManagerInterface::WorkingCopy &workingCopy)
+        : TextEditor::DefaultAssistInterface(textDocument, position, editor->document()->filePath(),
+                                             reason)
+        , m_editor(editor)
+        , m_gotCppSpecifics(false)
+        , m_workingCopy(workingCopy)
+    {}
+
     CppCompletionAssistInterface(QTextDocument *textDocument,
                                  int position,
                                  const QString &fileName,
@@ -178,19 +193,26 @@ public:
                                  const QStringList &includePaths,
                                  const QStringList &frameworkPaths)
         : TextEditor::DefaultAssistInterface(textDocument, position, fileName, reason)
+        , m_editor(0)
+        , m_gotCppSpecifics(true)
         , m_snapshot(snapshot)
         , m_includePaths(includePaths)
         , m_frameworkPaths(frameworkPaths)
     {}
 
-    const CPlusPlus::Snapshot &snapshot() const { return m_snapshot; }
-    const QStringList &includePaths() const { return m_includePaths; }
-    const QStringList &frameworkPaths() const { return m_frameworkPaths; }
+    const CPlusPlus::Snapshot &snapshot() const { getCppSpecifics(); return m_snapshot; }
+    const QStringList &includePaths() const { getCppSpecifics(); return m_includePaths; }
+    const QStringList &frameworkPaths() const { getCppSpecifics(); return m_frameworkPaths; }
 
 private:
-    CPlusPlus::Snapshot m_snapshot;
-    QStringList m_includePaths;
-    QStringList m_frameworkPaths;
+    void getCppSpecifics() const;
+
+    TextEditor::BaseTextEditor *m_editor;
+    mutable bool m_gotCppSpecifics;
+    CppModelManagerInterface::WorkingCopy m_workingCopy;
+    mutable CPlusPlus::Snapshot m_snapshot;
+    mutable QStringList m_includePaths;
+    mutable QStringList m_frameworkPaths;
 };
 
 } // Internal

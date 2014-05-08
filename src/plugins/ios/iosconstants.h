@@ -34,27 +34,39 @@
 namespace Ios {
 namespace Internal {
 
-enum IosQemuStatus {
-    IosQemuStarting,
-    IosQemuFailedToStart,
-    IosQemuFinished,
-    IosQemuCrashed,
-    IosQemuUserReason
-};
-
 } // namespace Internal
+
+namespace IosDeviceType {
+enum Enum {
+    IosDevice,
+    SimulatedIphone,
+    SimulatedIpad,
+    SimulatedIphoneRetina4Inch,
+    SimulatedIphoneRetina3_5Inch,
+    SimulatedIpadRetina
+};
+}
 
 namespace Constants {
 const char IOS_SETTINGS_ID[] = "ZZ.Ios Configurations";
 const char IOS_SETTINGS_CATEGORY[] = "XA.Ios";
 const char IOS_SETTINGS_TR_CATEGORY[] = QT_TRANSLATE_NOOP("Ios", "iOS");
 const char IOS_SETTINGS_CATEGORY_ICON[] = ":/ios/images/iossettings.png";
-const char IOSQT[] = "Qt4ProjectManager.QtVersion.Ios";
+const char IOSQT[] = "Qt4ProjectManager.QtVersion.Ios"; // this literal is replicated to avoid dependencies
 
 const char IOS_DEVICE_TYPE[] = "Ios.Device.Type";
 const char IOS_SIMULATOR_TYPE[] = "Ios.Simulator.Type";
 const char IOS_DEVICE_ID[] = "iOS Device ";
 const char IOS_SIMULATOR_DEVICE_ID[] = "iOS Simulator Device ";
+const char IOS_DSYM_BUILD_STEP_ID[] = "Ios.IosDsymBuildStep";
+
+const quint16 IOS_DEVICE_PORT_START = 30000;
+const quint16 IOS_DEVICE_PORT_END = 31000;
+const quint16 IOS_SIMULATOR_PORT_START = 30000;
+const quint16 IOS_SIMULATOR_PORT_END = 31000;
+
+const char EXTRA_INFO_KEY[] = "extraInfo";
+
 } // namespace Constants;
 } // namespace Ios
 

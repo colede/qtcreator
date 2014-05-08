@@ -41,7 +41,7 @@ class CMakeProjectNode : public ProjectExplorer::ProjectNode
     friend class CMakeProject;
 public:
     CMakeProjectNode(const QString &fileName);
-    virtual bool hasBuildTargets() const;
+    virtual bool showInSimpleTree() const;
     virtual QList<ProjectExplorer::ProjectAction> supportedActions(Node *node) const;
 
     virtual bool canAddSubProject(const QString &proFilePath) const;
@@ -55,7 +55,6 @@ public:
     virtual bool deleteFiles(const QStringList &filePaths);
     virtual bool renameFile(const QString &filePath,
                             const QString &newFilePath);
-    virtual QList<ProjectExplorer::RunConfiguration *> runConfigurationsFor(Node *node);
 };
 
 } // namespace Internal

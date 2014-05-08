@@ -33,10 +33,7 @@
 #include "screenshotcropper.h"
 
 #include <utils/pathchooser.h>
-
-#ifdef Q_OS_WIN
 #include <utils/winutils.h>
-#endif
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/documentmanager.h>
@@ -271,7 +268,7 @@ void ExamplesWelcomePage::facilitateQml(QQmlEngine *engine)
     if (m_showExamples) {
         proxy->setShowTutorialsOnly(false);
         rootContenxt->setContextProperty(QLatin1String("examplesModel"), proxy);
-        rootContenxt->setContextProperty(QLatin1String("qtVersionModel"), proxy->qtVersionModel());
+        rootContenxt->setContextProperty(QLatin1String("exampleSetModel"), proxy->exampleSetModel());
     } else {
         rootContenxt->setContextProperty(QLatin1String("tutorialsModel"), proxy);
     }
@@ -390,7 +387,7 @@ QString ExamplesWelcomePage::copyToAlternativeLocation(const QFileInfo& proFileI
 }
 
 void ExamplesWelcomePage::openProject(const QString &projectFile, const QStringList &additionalFilesToOpen,
-                                            const QUrl &help, const QStringList &dependencies, const QStringList &platforms)
+                                      const QUrl &help, const QStringList &dependencies, const QStringList &)
 {
     QString proFile = projectFile;
     if (proFile.isEmpty())
@@ -407,16 +404,14 @@ void ExamplesWelcomePage::openProject(const QString &projectFile, const QStringL
 
     // don't try to load help and files if loading the help request is being cancelled
     QString errorMessage;
-    ProjectExplorer::ProjectExplorerPlugin *peplugin = ProjectExplorer::ProjectExplorerPlugin::instance();
     if (proFile.isEmpty())
         return;
-    if (ProjectExplorer::Project *project = peplugin->openProject(proFile, &errorMessage)) {
+    if (ProjectExplorer::ProjectExplorerPlugin::instance()->openProject(proFile, &errorMessage)) {
         Core::ICore::openFiles(filesToOpen);
-        if (project->needsConfiguration())
-            project->configureAsExampleProject(platforms);
         Core::ModeManager::activateMode(Core::Constants::MODE_EDIT);
         if (help.isValid())
             Core::HelpManager::handleHelpRequest(help.toString() + QLatin1String("?view=split"));
+        Core::ModeManager::activateMode(ProjectExplorer::Constants::MODE_SESSION);
     }
     if (!errorMessage.isEmpty())
         QMessageBox::critical(Core::ICore::mainWindow(), tr("Failed to Open Project"), errorMessage);

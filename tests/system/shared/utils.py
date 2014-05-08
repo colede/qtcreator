@@ -81,7 +81,7 @@ def ensureChecked(objectName, shouldBeChecked = True, timeout=20000):
 # param expectedState is the expected enable state of the object
 def verifyEnabled(objectSpec, expectedState = True):
     if isinstance(objectSpec, (str, unicode)):
-        waitFor("object.exists('" + objectSpec + "')", 20000)
+        waitFor("object.exists('" + str(objectSpec).replace("'", "\\'") + "')", 20000)
         foundObject = findObject(objectSpec)
     else:
         foundObject = objectSpec
@@ -322,7 +322,7 @@ def verifyOutput(string, substring, outputFrom, outputIn):
     else:
         test.passes("Output from " + outputFrom + " found at position " + str(index) + " of " + outputIn)
 
-# function that verifies the existance and the read permissions
+# function that verifies the existence and the read permissions
 # of the given file path
 # if the executing user hasn't the read permission it checks
 # the parent folders for their execute permission
@@ -461,7 +461,7 @@ def iterateQtVersions(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
                         t,v,tb = sys.exc_info()
                         currResult = None
                         test.fatal("Function to additionally execute on Options Dialog could not be found or "
-                                   "an exception occured while executing it.", "%s(%s)" % (str(t), str(v)))
+                                   "an exception occurred while executing it.", "%s(%s)" % (str(t), str(v)))
                     additionalResult.append(currResult)
     if not keepOptionsOpen:
         clickButton(waitForObject(":Options.Cancel_QPushButton"))
@@ -524,7 +524,7 @@ def iterateKits(keepOptionsOpen=False, alreadyOnOptionsDialog=False,
                     t,v,tb = sys.exc_info()
                     currResult = None
                     test.fatal("Function to additionally execute on Options Dialog could not be "
-                               "found or an exception occured while executing it.", "%s(%s)" %
+                               "found or an exception occurred while executing it.", "%s(%s)" %
                                (str(t), str(v)))
                 additionalResult.append(currResult)
     if not keepOptionsOpen:
@@ -606,14 +606,14 @@ def simpleFileName(navigatorFileName):
     return ".".join(navigatorFileName.split(".")[-2:]).replace("\\","")
 
 def clickOnTab(tabBarStr, tabText, timeout=5000):
-    if platform.system() == 'Darwin':
-        if not waitFor("object.exists(tabBarStr)", timeout):
-            raise LookupError("Could not find QTabBar: %s" % objectMap.realName(tabBarStr))
-        tabBar = findObject(tabBarStr)
-        if not tabBar.visible:
-            test.log("Using workaround for Mac.")
-            setWindowState(tabBar, WindowState.Normal)
-    clickTab(waitForObject(tabBarStr, timeout), tabText)
+    if not waitFor("object.exists(tabBarStr)", timeout):
+        raise LookupError("Could not find QTabBar: %s" % objectMap.realName(tabBarStr))
+    tabBar = findObject(tabBarStr)
+    if platform.system() == 'Darwin' and not tabBar.visible:
+        test.log("Using workaround for Mac.")
+        setWindowState(tabBar, WindowState.Normal)
+    clickTab(tabBar, tabText)
+    waitFor("str(tabBar.tabText(tabBar.currentIndex)) == '%s'" % tabText, timeout)
 
 # constructs a string holding the properties for a QModelIndex
 # param property a string holding additional properties including their values
@@ -631,3 +631,27 @@ def verifyItemOrder(items, text):
         index = text.find(item)
         test.verify(index > lastIndex, "'" + item + "' found at index " + str(index))
         lastIndex = index
+
+def openVcsLog():
+    try:
+        foundObj = waitForObject("{type='QPlainTextEdit' unnamed='1' visible='1' "
+                                 "window=':Qt Creator_Core::Internal::MainWindow'}", 2000)
+        if className(foundObj) != 'QPlainTextEdit':
+            raise Exception("Found derived class, but not a pure QPlainTextEdit.")
+    except:
+        invokeMenuItem("Window", "Output Panes", "Version Control")
+
+def openGeneralMessages():
+    if not object.exists(":Qt Creator_Core::OutputWindow"):
+        invokeMenuItem("Window", "Output Panes", "General Messages")
+
+# function that retrieves a specific child object by its class
+# this is sometimes the best way to avoid using waitForObject() on objects that
+# occur more than once - but could easily be found by using a compound object
+# (e.g. search for Utils::PathChooser instead of Utils::FancyLineEdit and get the child)
+def getChildByClass(parent, classToSearchFor, occurrence=1):
+    children = [child for child in object.children(parent) if className(child) == classToSearchFor]
+    if len(children) < occurrence:
+        return None
+    else:
+        return children[occurrence - 1]

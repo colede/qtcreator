@@ -401,7 +401,7 @@ void CallgrindToolPrivate::handleFilterProjectCosts()
     QTC_ASSERT(pro, return);
 
     if (m_filterProjectCosts->isChecked()) {
-        const QString projectDir = pro->projectDirectory();
+        const QString projectDir = pro->projectDirectory().toString();
         m_proxyModel->setFilterBaseDir(projectDir);
     } else {
         m_proxyModel->setFilterBaseDir(QString());
@@ -678,7 +678,7 @@ QWidget *CallgrindToolPrivate::createWidgets()
     action->setDisabled(true);
     action->setIcon(QIcon(QLatin1String(Core::Constants::ICON_REDO)));
     //action->setText(tr("Dump"));
-    action->setToolTip(tr("Request the dumping of profile information. This will update the callgrind visualization."));
+    action->setToolTip(tr("Request the dumping of profile information. This will update the Callgrind visualization."));
     connect(action, SIGNAL(triggered()), this, SLOT(slotRequestDump()));
     layout->addWidget(createToolButton(action));
     m_dumpAction = action;
@@ -696,7 +696,7 @@ QWidget *CallgrindToolPrivate::createWidgets()
     // pause action
     action = new QAction(this);
     action->setCheckable(true);
-    action->setIcon(QIcon(QLatin1String(":/qml/images/pause-small.png")));
+    action->setIcon(QIcon(QLatin1String(Core::Constants::ICON_PAUSE)));
     //action->setText(tr("Ignore"));
     action->setToolTip(tr("Pause event logging. No events are counted which will speed up program execution during profiling."));
     connect(action, SIGNAL(toggled(bool)), this, SIGNAL(pauseToggled(bool)));
@@ -938,9 +938,9 @@ void CallgrindToolPrivate::loadExternalXmlLogFile()
 {
     const QString filePath = QFileDialog::getOpenFileName(
                 Core::ICore::mainWindow(),
-                tr("Open Callgrind XML Log File"),
+                tr("Open Callgrind Log File"),
                 QString(),
-                tr("XML Files (*.xml);;All Files (*)"));
+                tr("Callgrind Output (callgrind.out*);;All Files (*)"));
     if (filePath.isEmpty())
         return;
 

@@ -111,11 +111,6 @@ IEditor *PlainTextEditor::duplicate()
     return newWidget->editor();
 }
 
-Id PlainTextEditor::id() const
-{
-    return Core::Constants::K_DEFAULT_TEXT_EDITOR_ID;
-}
-
 void PlainTextEditorWidget::unCommentSelection()
 {
     Utils::unCommentSelection(this, m_commentDefinition);
@@ -164,7 +159,7 @@ void PlainTextEditorWidget::configure(const MimeType &mimeType)
 
                 setCodeFoldingSupported(true);
             }
-        } else if (baseTextDocument()) {
+        } else {
             const QString &fileName = baseTextDocument()->filePath();
             if (TextEditorSettings::highlighterSettings().isIgnoredFilePattern(fileName))
                 m_isMissingSyntaxDefinition = false;
@@ -189,6 +184,7 @@ void PlainTextEditorWidget::acceptMissingSyntaxDefinitionInfo()
 
 PlainTextDocument::PlainTextDocument()
 {
+    setId(Core::Constants::K_DEFAULT_TEXT_EDITOR_ID);
     connect(this, SIGNAL(tabSettingsChanged()), this, SLOT(updateTabSettings()));
 }
 

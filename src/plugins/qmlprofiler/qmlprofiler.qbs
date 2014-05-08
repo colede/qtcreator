@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -73,8 +73,6 @@ QtcPlugin {
             "SelectionRangeDetails.qml",
             "TimeDisplay.qml",
             "TimeMarks.qml",
-            "HorizontalGradientBorder.qml",
-            "VerticalGradientBorder.qml",
             "qmlprofiler.qrc",
         ]
     }

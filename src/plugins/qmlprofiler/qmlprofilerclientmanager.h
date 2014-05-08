@@ -69,10 +69,13 @@ public slots:
 
 private slots:
     void tryToConnect();
-    void connectionStateChanged();
+    void qmlDebugConnectionOpened();
+    void qmlDebugConnectionClosed();
+    void logState(const QString &);
+
     void retryMessageBoxFinished(int result);
 
-    void qmlComplete();
+    void qmlComplete(qint64 maximumTime);
     void v8Complete();
 
     void profilerStateChanged();

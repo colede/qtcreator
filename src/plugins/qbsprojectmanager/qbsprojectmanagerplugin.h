@@ -66,12 +66,14 @@ public:
     void extensionsInitialized();
 
 private slots:
-    void updateContextActions(ProjectExplorer::Node *node, ProjectExplorer::Project *project);
-    void updateReparseQbsAction();
-    void updateBuildActions();
-    void activeTargetChanged();
+    void projectWasAdded(ProjectExplorer::Project *project);
+    void currentProjectWasChanged(ProjectExplorer::Project *project);
+    void projectWasRemoved();
+    void nodeSelectionChanged(ProjectExplorer::Node *node, ProjectExplorer::Project *project);
     void buildStateChanged(ProjectExplorer::Project *project);
     void parsingStateChanged();
+    void currentEditorChanged();
+
     void buildFileContextMenu();
     void buildFile();
     void buildProductContextMenu();
@@ -79,29 +81,38 @@ private slots:
     void buildSubprojectContextMenu();
     void buildSubproject();
 
+    void reparseSelectedProject();
     void reparseCurrentProject();
+    void reparseProject(QbsProject *project);
 
 private:
+    void updateContextActions();
+    void updateReparseQbsAction();
+    void updateBuildActions();
+
     void buildFiles(QbsProject *project, const QStringList &files,
                     const QStringList &activeFileTags);
     void buildSingleFile(QbsProject *project, const QString &file);
     void buildProducts(QbsProject *project, const QStringList &products);
 
     QbsManager *m_manager;
-    ProjectExplorer::ProjectExplorerPlugin *m_projectExplorer;
 
     QAction *m_reparseQbs;
     QAction *m_reparseQbsCtx;
-    QAction *m_buildFileContextMenu;
-    QAction *m_buildProductContextMenu;
-    QAction *m_buildSubprojectContextMenu;
+    QAction *m_buildFileCtx;
+    QAction *m_buildProductCtx;
+    QAction *m_buildSubprojectCtx;
     Utils::ParameterAction *m_buildFile;
     Utils::ParameterAction *m_buildProduct;
     Utils::ParameterAction *m_buildSubproject;
 
+    Internal::QbsProject *m_selectedProject;
+    ProjectExplorer::Node *m_selectedNode;
+
     Internal::QbsProject *m_currentProject;
-    ProjectExplorer::Target *m_currentTarget;
-    ProjectExplorer::Node *m_currentNode;
+
+    Internal::QbsProject *m_editorProject;
+    ProjectExplorer::Node *m_editorNode;
 };
 
 } // namespace Internal

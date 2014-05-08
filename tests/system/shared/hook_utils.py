@@ -90,9 +90,9 @@ def batchEditRunEnvironment(kitCount, currentTarget, modifications, alreadyOnRun
     clickButton(waitForObject("{text='OK' type='QPushButton' unnamed='1' visible='1' "
                               "window=':Edit Environment_ProjectExplorer::EnvironmentItemsDialog'}"))
 
-def modifyRunSettingsForHookIntoQtQuickUI(kitCount, workingDir, projectName, port, quickVersion="1.1"):
+def modifyRunSettingsForHookIntoQtQuickUI(kitCount, kit, workingDir, projectName, port, quickVersion="1.1"):
     switchViewTo(ViewConstants.PROJECTS)
-    switchToBuildOrRunSettingsFor(kitCount, 0, ProjectSettings.RUN, True)
+    switchToBuildOrRunSettingsFor(kitCount, kit, ProjectSettings.RUN, True)
 
     qtVersion, mkspec, qtLibPath, qmake = getQtInformationForQmlProject()
     if None in (qtVersion, mkspec, qtLibPath, qmake):
@@ -228,17 +228,6 @@ def __configureCustomExecutable__(projectName, port, mkspec, qmakeVersion):
     __invokeAddCustomExecutable__(startAUT, args)
     return True
 
-# function that retrieves a specific child object by its class
-# this is sometimes the best way to avoid using waitForObject() on objects that
-# occur more than once - but could easily be found by using a compound object
-# (e.g. search for Utils::PathChooser instead of Utils::FancyLineEdit and get the child)
-def getChildByClass(parent, classToSearchFor, occurence=1):
-    children = [child for child in object.children(parent) if className(child) == classToSearchFor]
-    if len(children) < occurence:
-        return None
-    else:
-        return children[occurence - 1]
-
 # get the Squish path that is needed to successfully hook into the compiled app
 def getSquishPath(mkspec, qmakev):
     # assuming major and minor version will be enough
@@ -311,7 +300,7 @@ def deleteAppFromWinFW(workingDir, projectName, isReleaseBuild=True):
         test.warning("Could not delete %s as allowed program from win firewall" % (projectName))
 
 # helper that can modify the win firewall to allow a program to communicate through it or delete it
-# param addToFW defines whether to add (True) or delete (False) this programm to/from the firewall
+# param addToFW defines whether to add (True) or delete (False) this program to/from the firewall
 def __configureFW__(workingDir, projectName, isReleaseBuild, addToFW=True):
     if isReleaseBuild == None:
         if projectName[-4:] == ".exe":

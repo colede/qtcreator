@@ -36,8 +36,6 @@
 
 #include "blackberrydeviceconfiguration.h"
 
-namespace ProjectExplorer { class Target; }
-
 namespace Qnx {
 namespace Internal {
 
@@ -63,15 +61,10 @@ protected:
 
     bool fromMap(const QVariantMap &map);
 
-private slots:
-    void setupBarDescriptor();
-
 private:
     void ctor();
-    void addBarDescriptorToProject(const QString& barDescriptorPath);
 
     BlackBerryDeployInformation *m_deployInformation;
-    bool m_appBarDesciptorSetup;
 };
 
 } // namespace Internal

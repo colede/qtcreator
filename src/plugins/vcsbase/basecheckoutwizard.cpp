@@ -123,7 +123,7 @@ void BaseCheckoutWizard::runWizard(const QString &path, QWidget *parent, const Q
     const QString projectFile = openProject(checkoutPath, &errorMessage);
     if (projectFile.isEmpty()) {
         QMessageBox msgBox(QMessageBox::Warning, tr("Cannot Open Project"),
-                           tr("Failed to open project in '%1'.").arg(QDir::toNativeSeparators(checkoutPath)));
+                           tr("Failed to open project in \"%1\".").arg(QDir::toNativeSeparators(checkoutPath)));
         msgBox.setDetailedText(errorMessage);
         msgBox.addButton(QMessageBox::Ok);
         msgBox.exec();
@@ -132,7 +132,7 @@ void BaseCheckoutWizard::runWizard(const QString &path, QWidget *parent, const Q
 
 static inline QString msgNoProjectFiles(const QDir &dir, const QStringList &patterns)
 {
-    return BaseCheckoutWizard::tr("Could not find any project files matching (%1) in the directory '%2'.").arg(patterns.join(QLatin1String(", ")), QDir::toNativeSeparators(dir.absolutePath()));
+    return BaseCheckoutWizard::tr("Could not find any project files matching (%1) in the directory \"%2\".").arg(patterns.join(QLatin1String(", ")), QDir::toNativeSeparators(dir.absolutePath()));
 }
 
 // Try to find the project files in a project directory with some smartness
@@ -160,16 +160,10 @@ static QFileInfoList findProjectFiles(const QDir &projectDir, QString *errorMess
 
 QString BaseCheckoutWizard::openProject(const QString &path, QString *errorMessage)
 {
-    ProjectExplorer::ProjectExplorerPlugin *pe  = ProjectExplorer::ProjectExplorerPlugin::instance();
-    if (!pe) {
-        *errorMessage = tr("The Project Explorer is not available.");
-        return QString();
-    }
-
     // Search the directory for project files
     const QDir dir(path);
     if (!dir.exists()) {
-        *errorMessage = tr("'%1' does not exist.").
+        *errorMessage = tr("\"%1\" does not exist.").
                         arg(QDir::toNativeSeparators(path)); // Should not happen
         return QString();
     }
@@ -178,7 +172,7 @@ QString BaseCheckoutWizard::openProject(const QString &path, QString *errorMessa
         return QString();
     // Open. Do not use a busy cursor here as additional wizards might pop up
     const QString projectFile = projectFiles.front().absoluteFilePath();
-    if (!pe->openProject(projectFile, errorMessage))
+    if (!ProjectExplorer::ProjectExplorerPlugin::instance()->openProject(projectFile, errorMessage))
         return QString();
 
     return projectFile;

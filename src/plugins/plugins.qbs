@@ -28,6 +28,7 @@ Project {
         "designer/designer.qbs",
         "diffeditor/diffeditor.qbs",
         "fakevim/fakevim.qbs",
+        "emacskeys/emacskeys.qbs",
         "find/find.qbs",
         "genericprojectmanager/genericprojectmanager.qbs",
         "git/git.qbs",
@@ -60,6 +61,7 @@ Project {
         "updateinfo/updateinfo.qbs",
         "valgrind/valgrind.qbs",
         "vcsbase/vcsbase.qbs",
-        "welcome/welcome.qbs"
+        "welcome/welcome.qbs",
+        "winrt/winrt.qbs"
     ].concat(project.additionalPlugins)
 }

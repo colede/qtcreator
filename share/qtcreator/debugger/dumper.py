@@ -42,6 +42,19 @@ else:
 verbosity = 0
 verbosity = 1
 
+# Known special formats. Keep in sync with DisplayFormat in watchhandler.h
+KnownDumperFormatBase, \
+Latin1StringFormat, \
+Utf8StringFormat, \
+Local8BitStringFormat, \
+Utf16StringFormat, \
+Ucs4StringFormat, \
+Array10Format, \
+Array100Format, \
+Array1000Format, \
+Array10000Format \
+    = range(100, 110)
+
 def hasPlot():
     fileName = "/usr/bin/gnuplot"
     return os.path.isfile(fileName) and os.access(fileName, os.X_OK)
@@ -351,14 +364,11 @@ class DumperBase:
     #def toBlob(self, value):
     #    """Abstract"""
 
-    def isArmArchitecture(self):
-        return False
-
-    def isQnxTarget(self):
-        return False
-
     def is32bit(self):
         return self.ptrSize() == 4
+
+    def is64bit(self):
+        return self.ptrSize() == 8
 
     def isQt3Support(self):
         # assume no Qt 3 support by default
@@ -370,6 +380,17 @@ class DumperBase:
         if limit == 0:
             return min(size, self.stringCutOff)
         return min(size, limit)
+
+    def vectorDataHelper(self, addr):
+        if self.qtVersion() >= 0x050000:
+            size = self.extractInt(addr + 4)
+            alloc = self.extractInt(addr + 8) & 0x7ffffff
+            data = addr + self.extractPointer(addr + 8 + self.ptrSize())
+        else:
+            alloc = self.extractInt(addr + 4)
+            size = self.extractInt(addr + 8)
+            data = addr + 16
+        return data, size, alloc
 
     def byteArrayDataHelper(self, addr):
         if self.qtVersion() >= 0x050000:
@@ -503,6 +524,18 @@ class DumperBase:
             self.putType(type)
             self.putNumChild(0)
 
+    def putCallItem(self, name, value, func, *args):
+        try:
+            result = self.callHelper(value, func, args)
+            with SubItem(self, name):
+                self.putItem(result)
+        except:
+            with SubItem(self, name):
+                self.putValue("<not callable>")
+                self.putNumChild(0)
+
+    def call(self, value, func, *args):
+        return self.callHelper(value, func, args)
 
     def putMapName(self, value, index = -1):
         ns = self.qtNamespace()
@@ -552,6 +585,13 @@ class DumperBase:
                     else:
                         self.putSubItem("first", key)
                         self.putSubItem("second", value)
+
+    def putPlainChildren(self, value, dumpBase = True):
+        self.putEmptyValue(-99)
+        self.putNumChild(1)
+        if self.isExpanded():
+            with Children(self):
+                self.putFields(value, dumpBase)
 
     def isMapCompact(self, keyType, valueType):
         format = self.currentItemFormat()
@@ -606,6 +646,7 @@ class DumperBase:
             self.putValue('<>%s items>' % maximum)
         else:
             self.putValue('<%s items>' % count)
+        self.putNumChild(count)
 
     def putField(self, name, value):
         self.put('%s="%s",' % (name, value))
@@ -661,12 +702,12 @@ class DumperBase:
 
     def putCStyleArray(self, value):
         type = value.type.unqualified()
-        targetType = value[0].type
+        innerType = value[0].type
         #self.putAddress(value.address)
         self.putType(type)
         self.putNumChild(1)
         format = self.currentItemFormat()
-        isDefault = format == None and str(targetType.unqualified()) == "char"
+        isDefault = format == None and str(innerType.unqualified()) == "char"
         if isDefault or format == 0 or format == 1 or format == 2:
             blob = self.readMemory(self.addressOf(value), type.sizeof)
 
@@ -684,7 +725,7 @@ class DumperBase:
             self.putValue(blob, Hex2EncodedLocal8Bit)
         else:
             try:
-                self.putValue("@0x%x" % self.pointerValue(value.cast(targetType.pointer())))
+                self.putValue("@0x%x" % self.pointerValue(value.cast(innerType.pointer())))
             except:
                 self.putEmptyValue()
 
@@ -692,13 +733,13 @@ class DumperBase:
             try:
                 # May fail on artificial items like xmm register data.
                 p = self.addressOf(value)
-                ts = targetType.sizeof
-                if not self.tryPutArrayContents(targetType, p, int(type.sizeof / ts)):
-                    with Children(self, childType=targetType,
+                ts = innerType.sizeof
+                if not self.tryPutArrayContents(p, int(type.sizeof / ts), innerType):
+                    with Children(self, childType=innerType,
                             addrBase=p, addrStep=ts):
                         self.putFields(value)
             except:
-                with Children(self, childType=targetType):
+                with Children(self, childType=innerType):
                     self.putFields(value)
 
     def cleanAddress(self, addr):
@@ -714,6 +755,19 @@ class DumperBase:
             warn("CANNOT CONVERT TYPE: %s" % type(addr))
             return str(addr)
 
+    def tryPutArrayContents(self, base, n, innerType):
+        enc = self.simpleEncoding(innerType)
+        if not enc:
+            return False
+        size = n * innerType.sizeof;
+        self.put('childtype="%s",' % innerType)
+        self.put('addrbase="0x%x",' % toInteger(base))
+        self.put('addrstep="0x%x",' % toInteger(innerType.sizeof))
+        self.put('arrayencoding="%s",' % enc)
+        self.put('arraydata="')
+        self.put(self.readMemory(base, size))
+        self.put('",')
+        return True
 
     def putFormattedPointer(self, value):
         #warn("POINTER: %s" % value)
@@ -765,48 +819,48 @@ class DumperBase:
                         self.putItem(value.dereference())
             return
 
-        if format == 1:
+        if format == Latin1StringFormat:
             # Explicitly requested Latin1 formatting.
             self.putType(typeName)
             self.putValue(self.encodeCharArray(value), Hex2EncodedLatin1)
             self.putNumChild(0)
             return
 
-        if format == 2:
+        if format == Utf8StringFormat:
             # Explicitly requested UTF-8 formatting.
             self.putType(typeName)
             self.putValue(self.encodeCharArray(value), Hex2EncodedUtf8)
             self.putNumChild(0)
             return
 
-        if format == 3:
+        if format == Local8BitStringFormat:
             # Explicitly requested local 8 bit formatting.
             self.putType(typeName)
             self.putValue(self.encodeCharArray(value), Hex2EncodedLocal8Bit)
             self.putNumChild(0)
             return
 
-        if format == 4:
+        if format == Utf16StringFormat:
             # Explicitly requested UTF-16 formatting.
             self.putType(typeName)
             self.putValue(self.encodeChar2Array(value), Hex4EncodedLittleEndian)
             self.putNumChild(0)
             return
 
-        if format == 5:
+        if format == Ucs4StringFormat:
             # Explicitly requested UCS-4 formatting.
             self.putType(typeName)
             self.putValue(self.encodeChar4Array(value), Hex8EncodedLittleEndian)
             self.putNumChild(0)
             return
 
-        if not format is None and format >= 6 and format <= 9:
+        if not format is None \
+            and format >= Array10Format and format <= Array1000Format:
             # Explicitly requested formatting as array of n items.
-            n = (10, 100, 1000, 10000)[format - 6]
+            n = (10, 100, 1000, 10000)[format - Array10Format]
             self.putType(typeName)
             self.putItemCount(n)
-            self.putNumChild(n)
-            self.putArrayData(innerType, value, n)
+            self.putArrayData(value, n, innerType)
             return
 
         if self.isFunctionType(innerType):
@@ -909,31 +963,111 @@ class DumperBase:
             pass
 
 
-    def staticQObjectPropertyNames(self, metaobject):
-        properties = []
+    def extractStaticMetaObjectHelper(self, typeobj):
+        """
+        Checks whether type has a Q_OBJECT macro.
+        Returns the staticMetaObject, or 0.
+        """
+
+        if self.isSimpleType(typeobj):
+            return 0
+
+        typeName = str(typeobj)
+        isQObjectProper = typeName == self.qtNamespace() + "QObject"
+
+        if not isQObjectProper:
+            if self.directBaseClass(typeobj, 0) is None:
+                return 0
+
+            # No templates for now.
+            if typeName.find('<') >= 0:
+                return 0
+
+        result = self.findStaticMetaObject(typeName)
+
+        # We need to distinguish Q_OBJECT from Q_GADGET:
+        # a Q_OBJECT SMO has a non-null superdata (unless it's QObject itself),
+        # a Q_GADGET SMO has a null superdata (hopefully)
+        if result and not isQObjectProper:
+            superdata = self.extractPointer(result)
+            if toInteger(superdata) == 0:
+                # This looks like a Q_GADGET
+                return 0
+
+        return result
+
+    def extractStaticMetaObject(self, typeobj):
+        """
+        Checks recursively whether a type derives from QObject.
+        """
+        if not self.useFancy:
+            return 0
+
+        typeName = str(typeobj)
+        result = self.knownStaticMetaObjects.get(typeName, None)
+        if result is not None: # Is 0 or the static metaobject.
+            return result
+
+        try:
+            result = self.extractStaticMetaObjectHelper(typeobj)
+        except RuntimeError as error:
+            warn("METAOBJECT EXTRACTION FAILED: %s" % error)
+            result = 0
+        except:
+            warn("METAOBJECT EXTRACTION FAILED FOR UNKNOWN REASON")
+            result = 0
+
+        if not result:
+            base = self.directBaseClass(typeobj, 0)
+            if base:
+                result = self.extractStaticMetaObject(base)
+
+        self.knownStaticMetaObjects[typeName] = result
+        return result
+
+    def staticQObjectMetaData(self, metaobject, offset1, offset2, step):
+        items = []
         dd = metaobject["d"]
         data = self.extractPointer(dd["data"])
         sd = self.extractPointer(dd["stringdata"])
 
         metaObjectVersion = self.extractInt(data)
-        propertyCount = self.extractInt(data + 24)
-        propertyData = self.extractInt(data + 28)
+        itemCount = self.extractInt(data + offset1)
+        itemData = -offset2 if offset2 < 0 else self.extractInt(data + offset2)
 
         if metaObjectVersion >= 7: # Qt 5.
             byteArrayDataType = self.lookupType(self.qtNamespace() + "QByteArrayData")
             byteArrayDataSize = byteArrayDataType.sizeof
-            for i in range(propertyCount):
-                x = data + (propertyData + 3 * i) * 4
+            for i in range(itemCount):
+                x = data + (itemData + step * i) * 4
                 literal = sd + self.extractInt(x) * byteArrayDataSize
                 ldata, lsize, lalloc = self.byteArrayDataHelper(literal)
-                properties.append(self.extractBlob(ldata, lsize).toString())
+                items.append(self.extractBlob(ldata, lsize).toString())
         else: # Qt 4.
-            for i in range(propertyCount):
-                x = data + (propertyData + 3 * i) * 4
+            for i in range(itemCount):
+                x = data + (itemData + step * i) * 4
                 ldata = sd + self.extractInt(x)
-                properties.append(self.extractCString(ldata).decode("utf8"))
+                items.append(self.extractCString(ldata).decode("utf8"))
 
-        return properties
+        return items
+
+    def staticQObjectPropertyCount(self, metaobject):
+        return self.extractInt(self.extractPointer(metaobject["d"]["data"]) + 24)
+
+    def staticQObjectPropertyNames(self, metaobject):
+        return self.staticQObjectMetaData(metaobject, 24, 28, 3)
+
+    def staticQObjectMethodCount(self, metaobject):
+        return self.extractInt(self.extractPointer(metaobject["d"]["data"]) + 16)
+
+    def staticQObjectMethodNames(self, metaobject):
+        return self.staticQObjectMetaData(metaobject, 16, 20, 5)
+
+    def staticQObjectSignalCount(self, metaobject):
+        return self.extractInt(self.extractPointer(metaobject["d"]["data"]) + 52)
+
+    def staticQObjectSignalNames(self, metaobject):
+        return self.staticQObjectMetaData(metaobject, 52, -14, 5)
 
     def extractCString(self, addr):
         result = bytearray()
@@ -945,26 +1079,25 @@ class DumperBase:
             addr += 1
         return result
 
-    def generateQListChildren(self, value):
-        dptr = self.childAt(value, 0)["d"]
-        private = dptr.dereference()
-        begin = int(private["begin"])
-        end = int(private["end"])
-        array = private["array"]
+    def listChildrenGenerator(self, addr, typeName):
+        innerType = self.lookupType(self.qtNamespace() + typeName)
+        base = self.extractPointer(addr)
+        begin = self.extractInt(base + 8)
+        end = self.extractInt(base + 12)
+        array = base + 16
+        if self.qtVersion() < 0x50000:
+            array += self.ptrSize()
         size = end - begin
-        innerType = self.templateArgument(value.type, 0)
         innerSize = innerType.sizeof
-        stepSize = dptr.type.sizeof
-        addr = self.addressOf(array) + begin * stepSize
+        stepSize = self.ptrSize()
+        addr = array + begin * stepSize
         isInternal = innerSize <= stepSize and self.isMovableType(innerType)
-        if isInternal:
-            for i in range(size):
+        for i in range(size):
+            if isInternal:
                 yield self.createValue(addr + i * stepSize, innerType)
-        else:
-            p = self.createPointerValue(addr, innerType.pointer())
-            for i in range(size):
-                yield p.dereference().dereference()
-                p += 1
+            else:
+                p = self.extractPointer(addr + i * stepSize)
+                yield self.createValue(p, innerType)
 
 
     # This is called is when a QObject derived class is expanded
@@ -973,10 +1106,20 @@ class DumperBase:
         ptrSize = self.ptrSize()
         # dd = value["d_ptr"]["d"] is just behind the vtable.
         dd = self.extractPointer(qobject, offset=ptrSize)
+        isQt5 = self.qtVersion() >= 0x50000
 
-        extraData = self.extractPointer(dd + 5 * ptrSize + 2 * intSize)
+        extraDataOffset = 5 * ptrSize + 8 if isQt5 else 6 * ptrSize + 8
+        extraData = self.extractPointer(dd + extraDataOffset)
         #with SubItem(self, "[extradata]"):
         #    self.putValue("0x%x" % toInteger(extraData))
+
+        # Parent and children.
+        try:
+            d_ptr = qobject["d_ptr"]["d"]
+            self.putSubItem("[parent]", d_ptr["parent"])
+            self.putSubItem("[children]", d_ptr["children"])
+        except:
+            pass
 
         with SubItem(self, "[properties]"):
             propertyCount = 0
@@ -987,26 +1130,13 @@ class DumperBase:
                     # Static properties.
                     for i in range(propertyCount):
                         name = propertyNames[i]
-                        self.putCallItem(name, qobject, "property", '"' + name + '"')
+                        self.putCallItem(str(name), qobject, "property", '"' + name + '"')
 
                     # Dynamic properties.
-                    if extraData == 0:
-                        self.putItemCount(0)
-                        self.putNumChild(0)
-                    else:
-                        propertyNames = extraData + ptrSize
-                        propertyValues = extraData + 2 * ptrSize
-
-                        ns = self.qtNamespace()
-
-                        typ = self.lookupType(ns + "QList<" + ns + "QByteArray>")
-                        names = self.createValue(propertyNames, typ)
-
-                        typ = self.lookupType(ns + "QList<" + ns + "QVariant>")
-                        values = self.createValue(propertyValues, typ)
-
-                        for (k, v) in zip(self.generateQListChildren(names),
-                                self.generateQListChildren(values)) :
+                    if extraData:
+                        names = self.listChildrenGenerator(extraData + ptrSize, "QByteArray")
+                        values = self.listChildrenGenerator(extraData + 2 * ptrSize, "QVariant")
+                        for (k, v) in zip(names, values):
                             with SubItem(self, propertyCount):
                                 self.put('key="%s",' % self.encodeByteArray(k))
                                 self.put('keyencoded="%s",' % Hex2EncodedLatin1)
@@ -1016,9 +1146,68 @@ class DumperBase:
             self.putValue('<%s items>' % propertyCount if propertyCount else '<>0 items>')
             self.putNumChild(1)
 
+        with SubItem(self, "[methods]"):
+            methodCount = self.staticQObjectMethodCount(smo)
+            self.putItemCount(methodCount)
+            if self.isExpanded():
+                methodNames = self.staticQObjectMethodNames(smo)
+                with Children(self):
+                    for i in range(methodCount):
+                        k = methodNames[i]
+                        with SubItem(self, k):
+                            self.putEmptyValue()
 
-    def isKnownMovableType(self, type):
-        if type in (
+        with SubItem(self, "[signals]"):
+            signalCount = self.staticQObjectSignalCount(smo)
+            self.putItemCount(signalCount)
+            if self.isExpanded():
+                signalNames = self.staticQObjectSignalNames(smo)
+                signalCount = len(signalNames)
+                with Children(self):
+                    for i in range(signalCount):
+                        k = signalNames[i]
+                        with SubItem(self, k):
+                            self.putEmptyValue()
+                    self.putQObjectConnections(qobject)
+
+    def putQObjectConnections(self, qobject):
+        with SubItem(self, "[connections]"):
+            ptrSize = self.ptrSize()
+            self.putNoType()
+            ns = self.qtNamespace()
+            privateTypeName = ns + "QObjectPrivate"
+            privateType = self.lookupType(privateTypeName)
+            dd = qobject["d_ptr"]["d"]
+            d_ptr = dd.cast(privateType.pointer()).dereference()
+            connections = d_ptr["connectionLists"]
+            if self.isNull(connections):
+                self.putItemCount(0)
+            else:
+                connections = connections.dereference()
+                connections = connections.cast(self.directBaseClass(connections.type))
+                self.putValue('<>0 items>')
+                self.putNumChild(1)
+            if self.isExpanded():
+                pp = 0
+                with Children(self):
+                    innerType = self.templateArgument(connections.type, 0)
+                    # Should check:  innerType == ns::QObjectPrivate::ConnectionList
+                    base = self.extractPointer(connections)
+                    data, size, alloc = self.vectorDataHelper(base)
+                    connectionType = self.lookupType(ns + "QObjectPrivate::Connection")
+                    for i in xrange(size):
+                        first = self.extractPointer(data + i * 2 * ptrSize)
+                        while first:
+                            self.putSubItem("%s" % pp,
+                                self.createPointerValue(first, connectionType))
+                            first = self.extractPointer(first + 3 * ptrSize)
+                            # We need to enforce some upper limit.
+                            pp += 1
+                            if pp > 1000:
+                                break
+
+    def isKnownMovableType(self, typeName):
+        if typeName in (
                 "QBrush", "QBitArray", "QByteArray", "QCustomTypeInfo", "QChar", "QDate",
                 "QDateTime", "QFileInfo", "QFixed", "QFixedPoint", "QFixedSize",
                 "QHashDummyValue", "QIcon", "QImage", "QLine", "QLineF", "QLatin1Char",
@@ -1030,7 +1219,7 @@ class DumperBase:
                 ):
             return True
 
-        return type == "QStringList" and self.qtVersion() >= 0x050000
+        return typeName == "QStringList" and self.qtVersion() >= 0x050000
 
     def currentItemFormat(self, type = None):
         format = self.formats.get(self.currentIName)
@@ -1041,12 +1230,31 @@ class DumperBase:
             format = self.typeformats.get(needle)
         return format
 
-    def putPlotData(self, type, base, n, plotFormat = 2):
+    def putArrayData(self, base, n, innerType = None,
+            childNumChild = None, maxNumChild = 10000):
+        if innerType is None:
+            innerType = base.dereference().type
+        if not self.tryPutArrayContents(base, n, innerType):
+            base = self.createPointerValue(base, innerType)
+            with Children(self, n, innerType, childNumChild, maxNumChild,
+                    base, innerType.sizeof):
+                for i in self.childRange():
+                    i = toInteger(i)
+                    self.putSubItem(i, (base + i).dereference())
+
+    def putArrayItem(self, name, addr, n, typeName, plotFormat = 2):
+        with SubItem(self, name):
+            self.putEmptyValue()
+            self.putType("%s [%d]" % (typeName, n))
+            self.putArrayData(addr, n, self.lookupType(typeName))
+            self.putAddress(addr)
+
+    def putPlotData(self, base, n, typeobj, plotFormat = 2):
         if self.isExpanded():
-            self.putArrayData(type, base, n)
+            self.putArrayData(base, n, typeobj)
         if not hasPlot():
             return
-        if not self.isSimpleType(type):
+        if not self.isSimpleType(typeobj):
             #self.putValue(self.currentValue + " (not plottable)")
             self.putValue(self.currentValue)
             self.putField("plottable", "0")
@@ -1062,7 +1270,7 @@ class DumperBase:
                 gnuplotPipe[iname].terminate()
                 del gnuplotPipe[iname]
             return
-        base = self.createPointerValue(base, type)
+        base = self.createPointerValue(base, typeobj)
         if not iname in gnuplotPipe:
             gnuplotPipe[iname] = subprocess.Popen(["gnuplot"],
                     stdin=subprocess.PIPE)
@@ -1100,7 +1308,6 @@ class DumperBase:
             self.put('iname="local.argv",name="argv",')
             self.putItemCount(n, 100)
             self.putType('char **')
-            self.putNumChild(n)
             if self.currentIName in self.expandedINames:
                 p = value
                 with Children(self, n):
@@ -1114,7 +1321,7 @@ class DumperBase:
         elif sys.version_info[0] == 2 and isinstance(thing, long):
             bytes = self.extractBlob(thing, self.ptrSize()).toBytes()
         elif isinstance(thing, Blob):
-            bytes = blob.toBytes()
+            bytes = thing.toBytes()
         else:
             # Assume it's a (backend specific) Value.
             bytes = self.toBlob(thing).toBytes()

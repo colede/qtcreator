@@ -114,7 +114,8 @@ bool OpenEditorsWindow::eventFilter(QObject *obj, QEvent *e)
                 setVisible(false);
                 return true;
             }
-            if (ke->key() == Qt::Key_Return) {
+            if (ke->key() == Qt::Key_Return
+                    || ke->key() == Qt::Key_Enter) {
                 selectEditor(m_editorList->currentItem());
                 return true;
             }
@@ -199,23 +200,12 @@ void OpenEditorsWindow::setEditors(const QList<EditLocation> &globalHistory, Edi
 
     QSet<IDocument*> documentsDone;
     addHistoryItems(view->editorHistory(), view, model, documentsDone);
+
     // add missing editors from the global history
     addHistoryItems(globalHistory, view, model, documentsDone);
 
     // add purely restored editors which are not initialised yet
-    foreach (DocumentModel::Entry *entry, model->documents()) {
-        if (entry->document)
-            continue;
-        QTreeWidgetItem *item = new QTreeWidgetItem();
-        QString title = entry->displayName();
-        item->setIcon(0, m_emptyIcon);
-        item->setText(0, title);
-        item->setToolTip(0, entry->fileName());
-        item->setData(0, Qt::UserRole+2, QVariant::fromValue(entry->id()));
-        item->setTextAlignment(0, Qt::AlignLeft);
-
-        m_editorList->addTopLevelItem(item);
-    }
+    addRestoredItems(model);
 }
 
 
@@ -272,5 +262,22 @@ void OpenEditorsWindow::addHistoryItems(const QList<EditLocation> &history, Edit
 
         if (m_editorList->topLevelItemCount() == 1)
             m_editorList->setCurrentItem(item);
+    }
+}
+
+void OpenEditorsWindow::addRestoredItems(DocumentModel *model)
+{
+    foreach (DocumentModel::Entry *entry, model->documents()) {
+        if (entry->document)
+            continue;
+        QTreeWidgetItem *item = new QTreeWidgetItem();
+        QString title = entry->displayName();
+        item->setIcon(0, m_emptyIcon);
+        item->setText(0, title);
+        item->setToolTip(0, entry->fileName());
+        item->setData(0, Qt::UserRole+2, QVariant::fromValue(entry->id()));
+        item->setTextAlignment(0, Qt::AlignLeft);
+
+        m_editorList->addTopLevelItem(item);
     }
 }

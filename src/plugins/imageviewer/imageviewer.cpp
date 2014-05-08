@@ -137,11 +137,6 @@ Core::IDocument *ImageViewer::document()
     return d->file;
 }
 
-Core::Id ImageViewer::id() const
-{
-    return Core::Id(Constants::IMAGEVIEWER_ID);
-}
-
 QWidget *ImageViewer::toolBar()
 {
     return d->toolbar;

@@ -30,13 +30,14 @@
 #include "execmenu.h"
 #include "fancylineedit.h"
 #include "historycompleter.h"
+#include "hostosinfo.h"
 #include "qtcassert.h"
 
 #include <QAbstractItemView>
 #include <QDebug>
 #include <QKeyEvent>
 #include <QMenu>
-#include <QPainter>
+#include <QStylePainter>
 #include <QPropertyAnimation>
 #include <QStyle>
 
@@ -184,6 +185,11 @@ bool FancyLineEdit::isButtonVisible(Side side) const
     return d->m_iconEnabled[side];
 }
 
+QAbstractButton *FancyLineEdit::button(FancyLineEdit::Side side) const
+{
+    return d->m_iconbutton[side];
+}
+
 void FancyLineEdit::iconClicked()
 {
     IconButton *button = qobject_cast<IconButton *>(sender());
@@ -210,8 +216,8 @@ void FancyLineEdit::updateMargins()
     Side realLeft = (leftToRight ? Left : Right);
     Side realRight = (leftToRight ? Right : Left);
 
-    int leftMargin = d->m_iconbutton[realLeft]->pixmap().width() + 8;
-    int rightMargin = d->m_iconbutton[realRight]->pixmap().width() + 8;
+    int leftMargin = d->m_iconbutton[realLeft]->sizeHint().width() + 8;
+    int rightMargin = d->m_iconbutton[realRight]->sizeHint().width() + 8;
     // Note KDE does not reserve space for the highlight color
     if (style()->inherits("OxygenStyle")) {
         leftMargin = qMax(24, leftMargin);
@@ -480,14 +486,30 @@ IconButton::IconButton(QWidget *parent)
 
 void IconButton::paintEvent(QPaintEvent *)
 {
-    QPainter painter(this);
-    QRect pixmapRect = QRect(0, 0, m_pixmap.width(), m_pixmap.height());
+    qreal pixmapRatio = 1.0;
+#if QT_VERSION >= 0x050100
+    pixmapRatio = m_pixmap.devicePixelRatio();
+#endif
+    QStylePainter painter(this);
+    QRect pixmapRect = QRect(0, 0, m_pixmap.width()/pixmapRatio, m_pixmap.height()/pixmapRatio);
     pixmapRect.moveCenter(rect().center());
 
     if (m_autoHide)
         painter.setOpacity(m_iconOpacity);
 
     painter.drawPixmap(pixmapRect, m_pixmap);
+
+    if (hasFocus()) {
+        QStyleOptionFocusRect focusOption;
+        focusOption.initFrom(this);
+        focusOption.rect = pixmapRect;
+        if (HostOsInfo::isMacHost()) {
+            focusOption.rect.adjust(-4, -4, 4, 4);
+            painter.drawControl(QStyle::CE_FocusFrame, focusOption);
+        } else {
+            painter.drawPrimitive(QStyle::PE_FrameFocusRect, focusOption);
+        }
+    }
 }
 
 void IconButton::animateShow(bool visible)
@@ -503,6 +525,31 @@ void IconButton::animateShow(bool visible)
         animation->setEndValue(0.0);
         animation->start(QAbstractAnimation::DeleteWhenStopped);
     }
+}
+
+QSize IconButton::sizeHint() const
+{
+    qreal pixmapRatio = 1.0;
+#if QT_VERSION >= 0x050100
+    pixmapRatio = m_pixmap.devicePixelRatio();
+#endif
+    return QSize(m_pixmap.width()/pixmapRatio, m_pixmap.height()/pixmapRatio);
+}
+
+void IconButton::keyPressEvent(QKeyEvent *ke)
+{
+    QAbstractButton::keyPressEvent(ke);
+    if (!ke->modifiers() && (ke->key() == Qt::Key_Enter || ke->key() == Qt::Key_Return))
+        click();
+    // do not forward to line edit
+    ke->accept();
+}
+
+void IconButton::keyReleaseEvent(QKeyEvent *ke)
+{
+    QAbstractButton::keyReleaseEvent(ke);
+    // do not forward to line edit
+    ke->accept();
 }
 
 } // namespace Utils

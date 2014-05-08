@@ -161,10 +161,17 @@ def __createProjectHandleQtQuickSelection__(qtQuickVersion, controlsVersion):
 def __selectQtVersionDesktop__(checks, available=None):
     checkedTargets = __chooseTargets__(Targets.desktopTargetClasses(), available)
     if checks:
-        cbObject = ("{type='QCheckBox' text='%s' unnamed='1' visible='1' "
-                    "container={type='Utils::DetailsWidget' visible='1' unnamed='1'}}")
-        verifyChecked(cbObject % "Debug")
-        verifyChecked(cbObject % "Release")
+        for target in checkedTargets:
+            detailsWidget = waitForObject("{type='Utils::DetailsWidget' unnamed='1' visible='1' "
+                                          "summaryText='%s'}" % Targets.getStringForTarget(target))
+            detailsButton = getChildByClass(detailsWidget, "Utils::DetailsButton")
+            if test.verify(detailsButton != None, "Verifying if 'Details' button could be found"):
+                clickButton(detailsButton)
+                cbObject = ("{type='QCheckBox' text='%s' unnamed='1' visible='1' "
+                            "container=%s}")
+                verifyChecked(cbObject % ("Debug", objectMap.realName(detailsWidget)))
+                verifyChecked(cbObject % ("Release", objectMap.realName(detailsWidget)))
+                clickButton(detailsButton)
     clickButton(waitForObject(":Next_QPushButton"))
     return checkedTargets
 
@@ -358,7 +365,8 @@ def __chooseTargets__(targets=Targets.DESKTOP_474_GCC, availableTargets=None):
     else:
         # following targets depend on the build environment - added for further/later tests
         available = [Targets.DESKTOP_474_GCC, Targets.DESKTOP_480_GCC, Targets.DESKTOP_501_DEFAULT,
-                     Targets.MAEMO5, Targets.EMBEDDED_LINUX, Targets.SIMULATOR, Targets.HARMATTAN]
+                     Targets.DESKTOP_521_DEFAULT, Targets.MAEMO5, Targets.EMBEDDED_LINUX,
+                     Targets.SIMULATOR, Targets.HARMATTAN]
         if platform.system() in ('Windows', 'Microsoft'):
             available.remove(Targets.EMBEDDED_LINUX)
             available.append(Targets.DESKTOP_480_MSVC2010)
@@ -470,7 +478,8 @@ def __closeSubprocessByHookingInto__(executable, port, function, sType, userDefT
         attachToApplication(executable)
     except:
         resetApplicationContextToCreator()
-        if "Loading Qt Wrapper failed" in str(output.plainText):
+        if ("Loading Qt Wrapper failed" in str(output.plainText)
+            or "Failed to assign process to job object" in str(output.plainText)):
             test.warning("Loading of Qt Wrapper failed - probably different Qt versions.",
                          "Resetting hook-into settings to continue.")
             # assuming we're still on the build settings of the current project (TODO)
@@ -559,7 +568,7 @@ def __getSupportedPlatforms__(text, templateName, getAsStrings=False):
                     result.append(Targets.EMBEDDED_LINUX)
                 elif platform.system() in ('Windows', 'Microsoft'):
                     result.append(Targets.DESKTOP_480_MSVC2010)
-            result.append(Targets.DESKTOP_501_DEFAULT)
+            result.extend([Targets.DESKTOP_501_DEFAULT, Targets.DESKTOP_521_DEFAULT])
         if 'MeeGo/Harmattan' in supports:
             result.append(Targets.HARMATTAN)
         if 'Maemo/Fremantle' in supports:
@@ -569,7 +578,7 @@ def __getSupportedPlatforms__(text, templateName, getAsStrings=False):
     elif 'Platform independent' in text:
         # MAEMO5 and HARMATTAN could be wrong here - depends on having Madde plugin enabled or not
         result = [Targets.DESKTOP_474_GCC, Targets.DESKTOP_480_GCC, Targets.DESKTOP_501_DEFAULT,
-                  Targets.MAEMO5, Targets.SIMULATOR, Targets.HARMATTAN]
+                  Targets.DESKTOP_521_DEFAULT, Targets.MAEMO5, Targets.SIMULATOR, Targets.HARMATTAN]
         if platform.system() in ('Windows', 'Microsoft'):
             result.append(Targets.DESKTOP_480_MSVC2010)
     else:

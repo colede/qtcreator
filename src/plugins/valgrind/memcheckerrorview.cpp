@@ -188,7 +188,7 @@ static QString relativeToPath()
     // The project for which we insert the snippet.
     const ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
 
-    QString relativeTo(project ? project->projectDirectory() : QDir::homePath());
+    QString relativeTo(project ? project->projectDirectory().toString() : QDir::homePath());
     if (!relativeTo.endsWith(QDir::separator()))
         relativeTo.append(QDir::separator());
 
@@ -198,6 +198,8 @@ static QString relativeToPath()
 static QString errorLocation(const QModelIndex &index, const Error &error,
                       bool link = false, const QString &linkAttr = QString())
 {
+    if (!index.isValid())
+        return QString();
     const ErrorListModel *model = 0;
     const QAbstractProxyModel *proxy = qobject_cast<const QAbstractProxyModel *>(index.model());
     while (!model && proxy) {

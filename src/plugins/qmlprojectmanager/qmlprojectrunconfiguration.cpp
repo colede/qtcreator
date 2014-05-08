@@ -43,10 +43,7 @@
 
 #include <utils/fileutils.h>
 #include <utils/qtcprocess.h>
-
-#ifdef Q_OS_WIN
 #include <utils/winutils.h>
-#endif
 
 using namespace Core;
 using namespace QmlProjectManager::Internal;
@@ -144,8 +141,7 @@ QString QmlProjectRunConfiguration::commandLineArguments() const
 
 QString QmlProjectRunConfiguration::workingDirectory() const
 {
-    QFileInfo projectFile(target()->project()->projectFilePath());
-    return canonicalCapsPath(projectFile.absolutePath());
+    return canonicalCapsPath(target()->project()->projectFilePath().toFileInfo().absolutePath());
 }
 
 /* QtDeclarative checks explicitly that the capitalization for any URL / path
@@ -215,7 +211,7 @@ void QmlProjectRunConfiguration::setScriptSource(MainScriptSource source,
     } else { // FileInSettings
         m_scriptFile = settingsPath;
         m_mainScriptFilename
-                = target()->project()->projectDirectory() + QLatin1Char('/') + m_scriptFile;
+                = target()->project()->projectDirectory().toString() + QLatin1Char('/') + m_scriptFile;
     }
     updateEnabled();
 

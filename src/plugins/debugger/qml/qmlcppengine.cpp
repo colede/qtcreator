@@ -88,11 +88,11 @@ QmlCppEngine::QmlCppEngine(const DebuggerStartParameters &sp, QString *errorMess
     d = new QmlCppEnginePrivate;
     d->m_qmlEngine = new QmlEngine(sp, this);
     d->m_cppEngine = DebuggerRunControlFactory::createEngine(sp.firstSlaveEngineType, sp, errorMessage);
-    d->m_cppEngine->setMasterEngine(this);
     if (!d->m_cppEngine) {
         *errorMessage = tr("The slave debugging engine required for combined QML/C++-Debugging could not be created: %1").arg(*errorMessage);
         return;
     }
+    d->m_cppEngine->setMasterEngine(this);
     setActiveEngine(d->m_cppEngine);
 }
 
@@ -111,10 +111,11 @@ bool QmlCppEngine::canDisplayTooltip() const
 bool QmlCppEngine::setToolTipExpression(const QPoint & mousePos,
         TextEditor::ITextEditor *editor, const DebuggerToolTipContext &ctx)
 {
+    QTC_ASSERT(editor, return false);
     bool success = false;
-    if (editor->id() == CppEditor::Constants::CPPEDITOR_ID)
+    if (editor->document()->id() == CppEditor::Constants::CPPEDITOR_ID)
         success = d->m_cppEngine->setToolTipExpression(mousePos, editor, ctx);
-    else if (editor->id() == QmlJSEditor::Constants::C_QMLJSEDITOR_ID)
+    else if (editor->document()->id() == QmlJSEditor::Constants::C_QMLJSEDITOR_ID)
         success = d->m_qmlEngine->setToolTipExpression(mousePos, editor, ctx);
     return success;
 }

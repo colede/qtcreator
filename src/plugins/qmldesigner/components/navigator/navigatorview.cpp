@@ -30,6 +30,8 @@
 #include "navigatorview.h"
 #include "navigatortreemodel.h"
 #include "navigatorwidget.h"
+#include "nameitemdelegate.h"
+#include "iconcheckboxitemdelegate.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/icore.h>
@@ -73,9 +75,12 @@ NavigatorView::NavigatorView(QObject* parent) :
 
     treeWidget()->setIndentation(treeWidget()->indentation() * 0.5);
 
-    NameItemDelegate *idDelegate = new NameItemDelegate(this,m_treeModel.data());
-    IconCheckboxItemDelegate *showDelegate = new IconCheckboxItemDelegate(this,":/qmldesigner/images/eye_open.png",
-                                                          ":/qmldesigner/images/placeholder.png",m_treeModel.data());
+    NameItemDelegate *idDelegate = new NameItemDelegate(this,
+                                                        m_treeModel.data());
+    IconCheckboxItemDelegate *showDelegate = new IconCheckboxItemDelegate(this,
+                                                                          ":/qmldesigner/images/eye_open.png",
+                                                                          ":/qmldesigner/images/placeholder.png",
+                                                                          m_treeModel.data());
 
 #ifdef _LOCK_ITEMS_
     IconCheckboxItemDelegate *lockDelegate = new IconCheckboxItemDelegate(this,":/qmldesigner/images/lock.png",
@@ -133,6 +138,7 @@ void NavigatorView::modelAttached(Model *model)
 
 void NavigatorView::modelAboutToBeDetached(Model *model)
 {
+    m_treeModel->removeSubTree(rootModelNode());
     m_treeModel->clearView();
     AbstractView::modelAboutToBeDetached(model);
 }
@@ -169,8 +175,7 @@ void NavigatorView::signalHandlerPropertiesChanged(const QVector<SignalHandlerPr
 
 void NavigatorView::nodeAboutToBeRemoved(const ModelNode &removedNode)
 {
-    if (m_treeModel->isInTree(removedNode))
-        m_treeModel->removeSubTree(removedNode);
+    m_treeModel->removeSubTree(removedNode);
 }
 
 void NavigatorView::nodeAboutToBeReparented(const ModelNode &/*node*/, const NodeAbstractProperty &/*newPropertyParent*/, const NodeAbstractProperty &/*oldPropertyParent*/, AbstractView::PropertyChangeFlags /*propertyChange*/)
@@ -181,8 +186,8 @@ void NavigatorView::nodeReparented(const ModelNode &node, const NodeAbstractProp
 {
     bool blocked = blockSelectionChangedSignal(true);
 
-    if (m_treeModel->isInTree(node))
-        m_treeModel->removeSubTree(node);
+    m_treeModel->removeSubTree(node);
+
     if (node.isInHierarchy())
         m_treeModel->addSubTree(node);
 
@@ -201,13 +206,10 @@ void NavigatorView::nodeIdChanged(const ModelNode& node, const QString & /*newId
 void NavigatorView::propertiesAboutToBeRemoved(const QList<AbstractProperty>& propertyList)
 {
     foreach (const AbstractProperty &property, propertyList) {
-        if (property.isNodeProperty()) {
-            NodeProperty nodeProperty(property.toNodeProperty());
-            m_treeModel->removeSubTree(nodeProperty.modelNode());
-        } else if (property.isNodeListProperty()) {
-            NodeListProperty nodeListProperty(property.toNodeListProperty());
-            foreach (const ModelNode &node, nodeListProperty.toModelNodeList()) {
-                m_treeModel->removeSubTree(node);
+        if (property.isNodeAbstractProperty()) {
+            NodeAbstractProperty nodeAbstractProperty(property.toNodeListProperty());
+            foreach (const ModelNode &childNode, nodeAbstractProperty.directSubNodes()) {
+                m_treeModel->removeSubTree(childNode);
             }
         }
     }
@@ -219,17 +221,19 @@ void NavigatorView::rootNodeTypeChanged(const QString & /*type*/, int /*majorVer
         m_treeModel->updateItemRow(rootModelNode());
 }
 
-void NavigatorView::auxiliaryDataChanged(const ModelNode &node, const PropertyName & /*name*/, const QVariant & /*data*/)
+void NavigatorView::auxiliaryDataChanged(const ModelNode &modelNode, const PropertyName & name, const QVariant & /*data*/)
 {
-    if (m_treeModel->isInTree(node))
+    if (name == "invisible" && m_treeModel->isInTree(modelNode))
     {
         // update model
-        m_treeModel->updateItemRow(node);
+        m_treeModel->updateItemRow(modelNode);
 
         // repaint row (id and icon)
-        QModelIndex index = m_treeModel->indexForNode(node);
-        treeWidget()->update( index );
-        treeWidget()->update( index.sibling(index.row(),index.column()+1) );
+        foreach (const ModelNode &currentModelNode, modelNode.allSubModelNodesAndThisNode()) {
+            QModelIndex index = m_treeModel->indexForNode(currentModelNode);
+            treeWidget()->update(index);
+            treeWidget()->update(index.sibling(index.row(),index.column()+1));
+        }
     }
 }
 
@@ -311,11 +315,11 @@ void NavigatorView::leftButtonClicked()
         if (!node.isRootNode() && !node.parentProperty().parentModelNode().isRootNode()) {
             if (QmlItemNode::isValidQmlItemNode(node)) {
                 QPointF scenePos = QmlItemNode(node).instanceScenePosition();
-                node.parentProperty().parentModelNode().parentProperty().reparentHere(node);
+                node.parentProperty().parentProperty().reparentHere(node);
                 if (!scenePos.isNull())
                     setScenePos(node, scenePos);
             } else {
-                node.parentProperty().parentModelNode().parentProperty().reparentHere(node);
+                node.parentProperty().parentProperty().reparentHere(node);
             }
         }
     }
@@ -330,8 +334,8 @@ void NavigatorView::rightButtonClicked()
 
     bool blocked = blockSelectionChangedSignal(true);
     foreach (const ModelNode &node, selectedModelNodes()) {
-        if (!node.isRootNode() && node.parentProperty().isNodeListProperty() && node.parentProperty().toNodeListProperty().count() > 1) {
-            int index = node.parentProperty().toNodeListProperty().indexOf(node);
+        if (!node.isRootNode() && node.parentProperty().isNodeListProperty() && node.parentProperty().count() > 1) {
+            int index = node.parentProperty().indexOf(node);
             index--;
             if (index >= 0) { //for the first node the semantics are not clear enough. Wrapping would be irritating.
                 ModelNode newParent = node.parentProperty().toNodeListProperty().at(index);
@@ -359,11 +363,11 @@ void NavigatorView::upButtonClicked()
     bool blocked = blockSelectionChangedSignal(true);
     foreach (const ModelNode &node, selectedModelNodes()) {
         if (!node.isRootNode() && node.parentProperty().isNodeListProperty()) {
-            int oldIndex = node.parentProperty().toNodeListProperty().indexOf(node);
+            int oldIndex = node.parentProperty().indexOf(node);
             int index = oldIndex;
             index--;
             if (index < 0)
-                index = node.parentProperty().toNodeListProperty().count() - 1; //wrap around
+                index = node.parentProperty().count() - 1; //wrap around
             node.parentProperty().toNodeListProperty().slide(oldIndex, index);
         }
     }
@@ -376,10 +380,10 @@ void NavigatorView::downButtonClicked()
     bool blocked = blockSelectionChangedSignal(true);
     foreach (const ModelNode &node, selectedModelNodes()) {
         if (!node.isRootNode() && node.parentProperty().isNodeListProperty()) {
-            int oldIndex = node.parentProperty().toNodeListProperty().indexOf(node);
+            int oldIndex = node.parentProperty().indexOf(node);
             int index = oldIndex;
             index++;
-            if (index >= node.parentProperty().toNodeListProperty().count())
+            if (index >= node.parentProperty().count())
                 index = 0; //wrap around
             node.parentProperty().toNodeListProperty().slide(oldIndex, index);
         }

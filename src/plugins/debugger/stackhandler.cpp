@@ -205,6 +205,30 @@ void StackHandler::setFrames(const StackFrames &frames, bool canExpand)
     emit stackChanged();
 }
 
+void StackHandler::prependFrames(const StackFrames &frames)
+{
+    if (frames.isEmpty())
+        return;
+    const int count = frames.size();
+    beginInsertRows(QModelIndex(), 0, count - 1);
+    for (int i = count - 1; i >= 0; --i)
+        m_stackFrames.prepend(frames.at(i));
+    endInsertRows();
+    if (m_currentIndex >= 0)
+        setCurrentIndex(m_currentIndex + count);
+    emit stackChanged();
+}
+
+int StackHandler::firstUsableIndex() const
+{
+    if (!debuggerCore()->boolSetting(OperateByInstruction)) {
+        for (int i = 0, n = m_stackFrames.size(); i != n; ++i)
+            if (m_stackFrames.at(i).isUsable())
+                return i;
+    }
+    return 0;
+}
+
 const StackFrames &StackHandler::frames() const
 {
     return m_stackFrames;

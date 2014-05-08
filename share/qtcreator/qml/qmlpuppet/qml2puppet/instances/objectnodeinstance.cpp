@@ -202,11 +202,6 @@ bool ObjectNodeInstance::isQuickWindow() const
     return false;
 }
 
-bool ObjectNodeInstance::isGraphical() const
-{
-    return false;
-}
-
 bool ObjectNodeInstance::isLayoutable() const
 {
     return false;
@@ -386,16 +381,17 @@ void ObjectNodeInstance::addToNewProperty(QObject *object, QObject *newParent, c
 
 void ObjectNodeInstance::reparent(const ObjectNodeInstance::Pointer &oldParentInstance, const PropertyName &oldParentProperty, const ObjectNodeInstance::Pointer &newParentInstance, const PropertyName &newParentProperty)
 {
-    if (oldParentInstance) {
+    if (oldParentInstance && !oldParentInstance->ignoredProperties().contains(oldParentProperty)) {
         removeFromOldProperty(object(), oldParentInstance->object(), oldParentProperty);
         m_parentProperty.clear();
     }
 
-    if (newParentInstance) {
+    if (newParentInstance && !newParentInstance->ignoredProperties().contains(newParentProperty)) {
         m_parentProperty = newParentProperty;
         addToNewProperty(object(), newParentInstance->object(), newParentProperty);
     }
 }
+
 QVariant ObjectNodeInstance::convertSpecialCharacter(const QVariant& value) const
 {
     QVariant specialCharacterConvertedValue = value;
@@ -463,8 +459,16 @@ void ObjectNodeInstance::updateAllDirtyNodesRecursive()
 {
 }
 
+PropertyNameList ObjectNodeInstance::ignoredProperties() const
+{
+    return PropertyNameList();
+}
+
 void ObjectNodeInstance::setPropertyVariant(const PropertyName &name, const QVariant &value)
 {
+    if (ignoredProperties().contains(name))
+        return;
+
     QQmlProperty property(object(), name, context());
 
     if (!property.isValid())
@@ -503,6 +507,9 @@ void ObjectNodeInstance::setPropertyVariant(const PropertyName &name, const QVar
 
 void ObjectNodeInstance::setPropertyBinding(const PropertyName &name, const QString &expression)
 {
+    if (ignoredProperties().contains(name))
+        return;
+
     QQmlProperty property(object(), name, context());
 
     if (!property.isValid())
@@ -546,6 +553,9 @@ void ObjectNodeInstance::deleteObjectsInList(const QQmlProperty &property)
 
 void ObjectNodeInstance::resetProperty(const PropertyName &name)
 {
+    if (ignoredProperties().contains(name))
+        return;
+
     doResetProperty(name);
 
     if (name == "font.pixelSize")
@@ -646,6 +656,9 @@ void ObjectNodeInstance::doResetProperty(const PropertyName &propertyName)
 
 QVariant ObjectNodeInstance::property(const PropertyName &name) const
 {
+    if (ignoredProperties().contains(name))
+        return QVariant();
+
     if (m_modelAbstractPropertyHash.contains(name))
         return QVariant::fromValue(m_modelAbstractPropertyHash.value(name));
 
@@ -728,6 +741,11 @@ QString ObjectNodeInstance::instanceType(const PropertyName &name) const
 QList<ServerNodeInstance> ObjectNodeInstance::childItems() const
 {
     return QList<ServerNodeInstance>();
+}
+
+QList<QQuickItem *> ObjectNodeInstance::allItemsRecursive() const
+{
+    return QList<QQuickItem *>();
 }
 
 QList<ServerNodeInstance>  ObjectNodeInstance::stateInstances() const
@@ -929,8 +947,7 @@ QObject *ObjectNodeInstance::createComponentWrap(const QString &nodeSource, cons
     QObject *object = component;
     tweakObjects(object);
 
-    if (object && context)
-        QQmlEngine::setContextForObject(object, context);
+    QQmlEngine::setContextForObject(object, context);
 
     QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
 
@@ -1044,6 +1061,49 @@ static QQmlType *getQmlType(const QString &typeName, int majorNumber, int minorN
      return  QQmlMetaType::qmlType(typeName.toUtf8(), majorNumber, minorNumber);
 }
 
+static bool isWindowMetaObject(const QMetaObject *metaObject)
+{
+    if (metaObject) {
+        if (metaObject->className() == QByteArrayLiteral("QWindow"))
+            return true;
+
+        return isWindowMetaObject(metaObject->superClass());
+    }
+
+    return false;
+}
+
+static bool isCrashingType(QQmlType *type)
+{
+    if (type) {
+        if (type->qmlTypeName() == QStringLiteral("QtMultimedia/MediaPlayer"))
+            return true;
+    }
+
+    return false;
+}
+
+static QObject *createDummyWindow(QQmlContext *context, const QUrl &sourceUrl)
+{
+    QQmlComponent component(context->engine());
+    QByteArray dummyWindow;
+    dummyWindow.append("import QtQuick 2.0\n");
+    dummyWindow.append("Item {\n");
+    dummyWindow.append("property string title\n");
+    dummyWindow.append("}\n");
+
+    component.setData(dummyWindow, sourceUrl);
+
+    return component.create();
+}
+
+static bool isWindow(QObject *object) {
+    if (object)
+        return isWindowMetaObject(object->metaObject());
+
+    return false;
+}
+
 QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorNumber, int minorNumber, QQmlContext *context)
 {
     ComponentCompleteDisabler disableComponentComplete;
@@ -1053,7 +1113,9 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
     QObject *object = 0;
     QQmlType *type = getQmlType(typeName, majorNumber, minorNumber);
 
-    if (type) {
+    if (isCrashingType(type)) {
+        object = new QObject;
+    } else if (type) {
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 2, 0)) // TODO remove hack later if we only support >= 5.2
         if ( type->isComposite()) {
              object = createComponent(type->sourceUrl(), context);
@@ -1066,6 +1128,12 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
                 object = type->create();
             }
         }
+
+        if (isWindow(object)) {
+            delete object;
+            object = createDummyWindow(context, type->sourceUrl());
+        }
+
     } else {
         qWarning() << "QuickDesigner: Cannot create an object of type"
                    << QString("%1 %2,%3").arg(typeName).arg(majorNumber).arg(minorNumber)
@@ -1074,7 +1142,7 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
 
     tweakObjects(object);
 
-    if (object && context)
+    if (object)
         QQmlEngine::setContextForObject(object, context);
 
     QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);

@@ -87,6 +87,8 @@ public:
         // Get Document
         waitForFileInGlobalSnapshot(fileName);
         const Document::Ptr document = globalSnapshot().document(fileName);
+        QVERIFY(document);
+        QVERIFY(document->diagnosticMessages().isEmpty());
 
         m_snapshot.insert(document);
 
@@ -304,6 +306,8 @@ void CppToolsPlugin::test_completion()
     expectedCompletions.sort();
 
     QEXPECT_FAIL("enum_in_function_in_struct_in_function", "doesn't work", Abort);
+    QEXPECT_FAIL("nested_class_in_template_class_QTCREATORBUG-11752",
+                 "related to infiniteLoopLocalTypedef_QTCREATORBUG-11999", Abort);
     QCOMPARE(actualCompletions, expectedCompletions);
 }
 
@@ -344,7 +348,7 @@ void CppToolsPlugin::test_completion_data()
             "{\n"
             "    Base *b = new Derived;\n"
             "    if (1)\n"
-            "        @\n"
+            "        @;\n"
             "}\n"
         ) << _("((Derived *)b)->") << (QStringList()
             << QLatin1String("Derived")
@@ -367,7 +371,7 @@ void CppToolsPlugin::test_completion_data()
             "{\n"
             "    Base *b = new Derived;\n"
             "    if (1)\n"
-            "        @\n"
+            "        @;\n"
             "}\n"
         ) << _("(static_cast<Derived *>(b))->") << (QStringList()
             << QLatin1String("Derived")
@@ -1425,7 +1429,9 @@ void CppToolsPlugin::test_completion_data()
             "   @\n"
             "}\n"
         ) << _("s.") << (QStringList()
-            << QLatin1String("S"));
+            << QLatin1String("S")
+            << QLatin1String("i")
+            << QLatin1String("c"));
 
     QTest::newRow("instantiate_template_function") << _(
             "template <typename T>\n"
@@ -1438,6 +1444,92 @@ void CppToolsPlugin::test_completion_data()
         ) << _("templateFunction<A>()->") << (QStringList()
             << QLatin1String("A")
             << QLatin1String("a"));
+
+    QTest::newRow("nested_class_declaration_with_object_name_inside_function") << _(
+            "int foo()\n"
+            "{\n"
+            "    struct Nested\n"
+            "    {\n"
+            "        int i;\n"
+            "    } n;\n"
+            "    @;\n"
+            "}\n"
+        ) << _("n.") << (QStringList()
+            << QLatin1String("Nested")
+            << QLatin1String("i"));
+
+    QTest::newRow("nested_anonymous_class_QTCREATORBUG10876_1") << _(
+            "struct EnclosingStruct\n"
+            "{\n"
+            "   int memberOfEnclosingStruct;\n"
+            "   struct\n"
+            "   {\n"
+            "       int memberNestedAnonymousClass;\n"
+            "   };\n"
+            "   void fun()\n"
+            "   {\n"
+            "       @\n"
+            "   }\n"
+            "};\n"
+        ) << _("member") << (QStringList()
+            << QLatin1String("memberNestedAnonymousClass")
+            << QLatin1String("memberOfEnclosingStruct"));
+
+    QTest::newRow("nested_anonymous_class_QTCREATORBUG10876_2") << _(
+            "struct EnclosingStruct\n"
+            "{\n"
+            "   int memberOfEnclosingStruct;\n"
+            "   struct\n"
+            "   {\n"
+            "       int memberOfNestedAnonymousClass;\n"
+            "       struct\n"
+            "       {\n"
+            "           int memberOfNestedOfNestedAnonymousClass;\n"
+            "       };\n"
+            "   };\n"
+            "   void fun()\n"
+            "   {\n"
+            "       @\n"
+            "   }\n"
+            "};\n"
+        ) << _("member") << (QStringList()
+            << QLatin1String("memberOfNestedAnonymousClass")
+            << QLatin1String("memberOfNestedOfNestedAnonymousClass")
+            << QLatin1String("memberOfEnclosingStruct"));
+
+    QTest::newRow("nested_anonymous_class_QTCREATORBUG10876_3") << _(
+            "struct EnclosingStruct\n"
+            "{\n"
+            "   int memberOfEnclosingStruct;\n"
+            "   struct\n"
+            "   {\n"
+            "       int memberOfNestedAnonymousClass;\n"
+            "       struct\n"
+            "       {\n"
+            "           int memberOfNestedOfNestedAnonymousClass;\n"
+            "       } nestedOfNestedAnonymousClass;\n"
+            "   };\n"
+            "   void fun()\n"
+            "   {\n"
+            "       @\n"
+            "   }\n"
+            "};\n"
+        ) << _("nestedOfNestedAnonymousClass.") << (QStringList()
+            << QLatin1String("memberOfNestedOfNestedAnonymousClass"));
+
+    QTest::newRow("nested_anonymous_class_inside_function") << _(
+            "void fun()\n"
+            "{\n"
+            "   union\n"
+            "   {\n"
+            "       int foo1;\n"
+            "       int foo2;\n"
+            "   };\n"
+            "   @\n"
+            "}\n"
+        ) << _("foo") << (QStringList()
+            << QLatin1String("foo1")
+            << QLatin1String("foo2"));
 
     QTest::newRow("crash_cloning_template_class_QTCREATORBUG9329") << _(
             "struct A {};\n"
@@ -1616,6 +1708,7 @@ void CppToolsPlugin::test_completion_data()
             "        int m;\n"
             "    };\n"
             "}\n"
+            "}\n"
             "void foo()\n"
             "{\n"
             "   namespace NS = NS1::NS2;\n"
@@ -1636,6 +1729,7 @@ void CppToolsPlugin::test_completion_data()
             "    {\n"
             "        int m;\n"
             "    };\n"
+            "}\n"
             "}\n"
             "void foo()\n"
             "{\n"
@@ -1735,7 +1829,6 @@ void CppToolsPlugin::test_completion_data()
             "   enum E { val1, val2, val3 };\n"
             "   @\n"
             "};\n"
-            "@\n"
         ) << _("Foo::v") << (QStringList()
             << QLatin1String("val1")
             << QLatin1String("val2")
@@ -1747,7 +1840,6 @@ void CppToolsPlugin::test_completion_data()
             "   enum E { val1, val2, val3 };\n"
             "   @\n"
             "};\n"
-            "@\n"
         ) << _("Foo::E::") << (QStringList()
             << QLatin1String("E")
             << QLatin1String("val1")
@@ -1760,7 +1852,6 @@ void CppToolsPlugin::test_completion_data()
             "   enum { val1, val2, val3 };\n"
             "   @\n"
             "};\n"
-            "@\n"
         ) << _("Foo::v") << (QStringList()
             << QLatin1String("val1")
             << QLatin1String("val2")
@@ -1771,8 +1862,7 @@ void CppToolsPlugin::test_completion_data()
             "{\n"
             "   enum E { val1, val2, val3 };\n"
             "   @\n"
-            "};\n"
-            "@\n"
+            "}\n"
         ) << _("Ns::v") << (QStringList()
             << QLatin1String("val1")
             << QLatin1String("val2")
@@ -1783,8 +1873,7 @@ void CppToolsPlugin::test_completion_data()
             "{\n"
             "   enum E { val1, val2, val3 };\n"
             "   @\n"
-            "};\n"
-            "@\n"
+            "}\n"
         ) << _("Ns::E::") << (QStringList()
             << QLatin1String("E")
             << QLatin1String("val1")
@@ -1796,8 +1885,7 @@ void CppToolsPlugin::test_completion_data()
             "{\n"
             "   enum { val1, val2, val3 };\n"
             "   @\n"
-            "};\n"
-            "@\n"
+            "}\n"
         ) << _("Ns::v") << (QStringList()
             << QLatin1String("val1")
             << QLatin1String("val2")
@@ -2098,9 +2186,9 @@ void CppToolsPlugin::test_completion_data()
             "void client()\n"
             "{\n"
             "    Timer *timer = new Timer;\n"
-            "    connect(timer, SIGNAL(@\n"
+            "    @\n"
             "}\n"
-        ) << _() << (QStringList()
+        ) << _("connect(timer, SIGNAL(") << (QStringList()
             << QLatin1String("timeout()"));
 
     QTest::newRow("member_of_class_accessed_by_using_QTCREATORBUG9037_1") << _(
@@ -2129,6 +2217,38 @@ void CppToolsPlugin::test_completion_data()
             "}\n"
         ) << _("mem") << (QStringList()
             << QLatin1String("member"));
+
+    QTest::newRow("no_binding_block_as_instantiationOrigin_QTCREATORBUG-11424") << _(
+            "template <typename T>\n"
+            "class QVector\n"
+            "{\n"
+            "public:\n"
+            "   inline const_iterator constBegin() const;\n"
+            "};\n"
+            "\n"
+            "typedef struct { double value; } V;\n"
+            "\n"
+            "double getValue(const QVector<V>& d) const {\n"
+            "   typedef QVector<V>::ConstIterator Iter;\n"
+            "   @\n"
+            "}\n"
+        ) << _("double val = d.constBegin()->") << (QStringList());
+
+    QTest::newRow("nested_class_in_template_class_QTCREATORBUG-11752") << _(
+            "template <typename T>\n"
+            "struct Temp\n"
+            "{\n"
+            "   struct Nested1 { T t; };\n"
+            "   struct Nested2 { Nested1 n1; };\n"
+            "};\n"
+            "struct Foo { int foo; };\n"
+            "void fun() {\n"
+            "   Temp<Foo>::Nested2 n2;\n"
+            "   @\n"
+            "}\n"
+        ) << _("n2.n1.t.") << (QStringList()
+            << QLatin1String("foo")
+            << QLatin1String("Foo"));
 }
 
 void CppToolsPlugin::test_completion_member_access_operator()
@@ -2173,7 +2293,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "typedef S SType;\n"
             "SType p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
@@ -2184,7 +2303,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "typedef S *SType;\n"
             "SType *p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList())
         << false;
 
@@ -2193,7 +2311,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "typedef S SType;\n"
             "SType *p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
@@ -2204,7 +2321,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "typedef S* SPtr;\n"
             "SPtr p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
@@ -2215,7 +2331,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "struct S { int m; };\n"
             "SType *p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
@@ -2226,7 +2341,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "struct S { int m; };\n"
             "SType p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
@@ -2237,7 +2351,6 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "struct S { int m; };\n"
             "SType *p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList())
         << false;
 
@@ -2246,9 +2359,30 @@ void CppToolsPlugin::test_completion_member_access_operator_data()
             "struct S { int m; };\n"
             "SType p;\n"
             "@\n"
-            "}\n"
         ) << _("p.") << (QStringList()
             << QLatin1String("S")
             << QLatin1String("m"))
         << true;
+
+    QTest::newRow("typedef_of_pointer_of_type_replace_access_operator") << _(
+            "struct S { int m; };\n"
+            "typedef struct S SType;\n"
+            "typedef struct SType *STypePtr;\n"
+            "STypePtr p;\n"
+            "@\n"
+        ) << _("p.") << (QStringList()
+            << QLatin1String("S")
+            << QLatin1String("m"))
+        << true;
+
+    QTest::newRow("typedef_of_pointer_of_type_no_replace_access_operator") << _(
+            "struct S { int m; };\n"
+            "typedef struct S SType;\n"
+            "typedef struct SType *STypePtr;\n"
+            "STypePtr p;\n"
+            "@\n"
+        ) << _("p->") << (QStringList()
+            << QLatin1String("S")
+            << QLatin1String("m"))
+        << false;
 }

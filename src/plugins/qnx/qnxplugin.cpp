@@ -58,6 +58,8 @@
 #include "cascadesimport/cascadesimportwizard.h"
 #include "qnxtoolchain.h"
 #include "qnxattachdebugsupport.h"
+#include "blackberrypotentialkit.h"
+#include "bardescriptorfilenodemanager.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -75,23 +77,24 @@
 
 using namespace Qnx::Internal;
 
-QNXPlugin::QNXPlugin()
+QnxPlugin::QnxPlugin()
     : m_debugSeparator(0)
     , m_attachToQnxApplication(0)
 {
 }
 
-QNXPlugin::~QNXPlugin()
+QnxPlugin::~QnxPlugin()
 {
     delete BlackBerryDeviceConnectionManager::instance();
 }
 
-bool QNXPlugin::initialize(const QStringList &arguments, QString *errorString)
+bool QnxPlugin::initialize(const QStringList &arguments, QString *errorString)
 {
     Q_UNUSED(arguments)
     Q_UNUSED(errorString)
 
     // Handles BlackBerry
+    addAutoReleasedObject(new BlackBerryConfigurationManager);
     addAutoReleasedObject(new BlackBerryQtVersionFactory);
     addAutoReleasedObject(new BlackBerryDeployConfigurationFactory);
     addAutoReleasedObject(new BlackBerryDeviceConfigurationFactory);
@@ -104,6 +107,8 @@ bool QNXPlugin::initialize(const QStringList &arguments, QString *errorString)
     addAutoReleasedObject(new BlackBerryKeysPage);
     addAutoReleasedObject(new BlackBerryCheckDeviceStatusStepFactory);
     addAutoReleasedObject(new CascadesImportWizard);
+    addAutoReleasedObject(new BlackBerryPotentialKit);
+    addAutoReleasedObject(new BarDescriptorFileNodeManager);
     BlackBerryDeviceConnectionManager::instance()->initialize();
 
     // Handles QNX
@@ -121,32 +126,33 @@ bool QNXPlugin::initialize(const QStringList &arguments, QString *errorString)
     Core::MimeGlobPattern barDescriptorGlobPattern(QLatin1String("*.xml"), Core::MimeGlobPattern::MinWeight + 1);
     Core::MimeType barDescriptorMimeType;
     barDescriptorMimeType.setType(QLatin1String(Constants::QNX_BAR_DESCRIPTOR_MIME_TYPE));
-    barDescriptorMimeType.setComment(tr("Bar descriptor file (BlackBerry)"));
+    barDescriptorMimeType.setComment(tr("BAR descriptor file (BlackBerry)"));
     barDescriptorMimeType.setGlobPatterns(QList<Core::MimeGlobPattern>() << barDescriptorGlobPattern);
     barDescriptorMimeType.addMagicMatcher(QSharedPointer<Core::IMagicMatcher>(new BarDescriptorMagicMatcher));
     barDescriptorMimeType.setSubClassesOf(QStringList() << QLatin1String("application/xml"));
 
     if (!Core::MimeDatabase::addMimeType(barDescriptorMimeType)) {
-        *errorString = tr("Could not add mime-type for bar-descriptor.xml editor.");
+        *errorString = tr("Could not add MIME type for bar-descriptor.xml editor.");
         return false;
     }
     addAutoReleasedObject(new BarDescriptorEditorFactory);
 
-    connect(ProjectExplorer::KitManager::instance(), SIGNAL(kitsLoaded()), &BlackBerryConfigurationManager::instance(), SLOT(loadSettings()));
+    connect(ProjectExplorer::KitManager::instance(), SIGNAL(kitsLoaded()),
+            BlackBerryConfigurationManager::instance(), SLOT(loadSettings()));
 
     return true;
 }
 
-void QNXPlugin::extensionsInitialized()
+void QnxPlugin::extensionsInitialized()
 {
     ProjectExplorer::TaskHub::addCategory(Constants::QNX_TASK_CATEGORY_BARDESCRIPTOR,
-                                          tr("Bar Descriptor"));
+                                          tr("BAR Descriptor"));
 
     // Debug support
     QnxAttachDebugSupport *debugSupport = new QnxAttachDebugSupport(this);
 
     m_attachToQnxApplication = new QAction(this);
-    m_attachToQnxApplication->setText(tr("Attach to Remote QNX Application..."));
+    m_attachToQnxApplication->setText(tr("Attach to remote QNX application..."));
     connect(m_attachToQnxApplication, SIGNAL(triggered()), debugSupport, SLOT(showProcessesDialog()));
 
     const Core::Context globalcontext(Core::Constants::C_GLOBAL);
@@ -160,12 +166,12 @@ void QNXPlugin::extensionsInitialized()
     connect(ProjectExplorer::KitManager::instance(), SIGNAL(kitsChanged()), this, SLOT(updateDebuggerActions()));
 }
 
-ExtensionSystem::IPlugin::ShutdownFlag QNXPlugin::aboutToShutdown()
+ExtensionSystem::IPlugin::ShutdownFlag QnxPlugin::aboutToShutdown()
 {
     return SynchronousShutdown;
 }
 
-void QNXPlugin::updateDebuggerActions()
+void QnxPlugin::updateDebuggerActions()
 {
     bool hasValidQnxKit = false;
     ProjectExplorer::DeviceTypeMatcher qnxTypeMatcher(Constants::QNX_QNX_OS_TYPE);
@@ -187,7 +193,7 @@ void QNXPlugin::updateDebuggerActions()
 
 #include "bardescriptordocument.h"
 
-void QNXPlugin::testBarDescriptorDocumentSetValue_data()
+void QnxPlugin::testBarDescriptorDocumentSetValue_data()
 {
     QTest::addColumn<BarDescriptorDocument::Tag>("tag");
     QTest::addColumn<QVariant>("value");
@@ -358,7 +364,7 @@ void QNXPlugin::testBarDescriptorDocumentSetValue_data()
                                   << true;
 }
 
-void QNXPlugin::testBarDescriptorDocumentSetValue()
+void QnxPlugin::testBarDescriptorDocumentSetValue()
 {
     QFETCH(BarDescriptorDocument::Tag, tag);
     QFETCH(QVariant, value);
@@ -377,7 +383,7 @@ void QNXPlugin::testBarDescriptorDocumentSetValue()
         QCOMPARE(doc.value(tag), value);
 }
 
-void QNXPlugin::testBarDescriptorDocumentSetBannerComment_data()
+void QnxPlugin::testBarDescriptorDocumentSetBannerComment_data()
 {
     QTest::addColumn<QString>("comment");
     QTest::addColumn<QString>("baseXml");
@@ -422,7 +428,7 @@ void QNXPlugin::testBarDescriptorDocumentSetBannerComment_data()
 
 }
 
-void QNXPlugin::testBarDescriptorDocumentSetBannerComment()
+void QnxPlugin::testBarDescriptorDocumentSetBannerComment()
 {
     QFETCH(QString, comment);
     QFETCH(QString, baseXml);
@@ -438,7 +444,7 @@ void QNXPlugin::testBarDescriptorDocumentSetBannerComment()
     QCOMPARE(doc.bannerComment(), comment);
 }
 
-void QNXPlugin::testConfigurationManager_data()
+void QnxPlugin::testConfigurationManager_data()
 {
     const QLatin1String NDKEnvFileKey("NDKEnvFile");
     const QLatin1String NDKPathKey("NDKPath");
@@ -475,14 +481,14 @@ void QNXPlugin::testConfigurationManager_data()
     QTest::newRow("configurations") << newerConfiguration << olderConfiguration;;
 }
 
-void QNXPlugin::testConfigurationManager()
+void QnxPlugin::testConfigurationManager()
 {
-    BlackBerryConfigurationManager &manager = BlackBerryConfigurationManager::instance();
+    BlackBerryConfigurationManager *manager = BlackBerryConfigurationManager::instance();
 
-    QCOMPARE(manager.apiLevels().count(), 0);
-    QCOMPARE(manager.activeApiLevels().count(), 0);
-    QCOMPARE(manager.defaultApiLevel(), static_cast<BlackBerryApiLevelConfiguration*>(0));
-    QVERIFY(manager.newestApiLevelEnabled());
+    QCOMPARE(manager->apiLevels().count(), 0);
+    QCOMPARE(manager->activeApiLevels().count(), 0);
+    QCOMPARE(manager->defaultApiLevel(), static_cast<BlackBerryApiLevelConfiguration*>(0));
+    QVERIFY(manager->newestApiLevelEnabled());
 
     QFETCH(QVariantMap, newerConfiguration);
     QFETCH(QVariantMap, olderConfiguration);
@@ -493,34 +499,34 @@ void QNXPlugin::testConfigurationManager()
     BlackBerryApiLevelConfiguration *oldConfig =
             new BlackBerryApiLevelConfiguration(olderConfiguration);
 
-    QVERIFY(manager.addApiLevel(oldConfig));
-    QVERIFY(manager.newestApiLevelEnabled());
-    QCOMPARE(manager.defaultApiLevel(), oldConfig);
+    QVERIFY(manager->addApiLevel(oldConfig));
+    QVERIFY(manager->newestApiLevelEnabled());
+    QCOMPARE(manager->defaultApiLevel(), oldConfig);
 
-    manager.setDefaultConfiguration(oldConfig);
+    manager->setDefaultConfiguration(oldConfig);
 
-    QCOMPARE(manager.defaultApiLevel(), oldConfig);
-    QCOMPARE(manager.apiLevels().first(), oldConfig);
-    QVERIFY(!manager.newestApiLevelEnabled());
+    QCOMPARE(manager->defaultApiLevel(), oldConfig);
+    QCOMPARE(manager->apiLevels().first(), oldConfig);
+    QVERIFY(!manager->newestApiLevelEnabled());
 
-    QVERIFY(manager.addApiLevel(newerConfig));
-    QCOMPARE(manager.apiLevels().first(), newerConfig);
-    QCOMPARE(manager.defaultApiLevel(), oldConfig);
+    QVERIFY(manager->addApiLevel(newerConfig));
+    QCOMPARE(manager->apiLevels().first(), newerConfig);
+    QCOMPARE(manager->defaultApiLevel(), oldConfig);
 
-    manager.setDefaultConfiguration(0);
-    QVERIFY(manager.newestApiLevelEnabled());
-    QCOMPARE(manager.defaultApiLevel(), newerConfig);
+    manager->setDefaultConfiguration(0);
+    QVERIFY(manager->newestApiLevelEnabled());
+    QCOMPARE(manager->defaultApiLevel(), newerConfig);
 
-    manager.setDefaultConfiguration(oldConfig);
-    manager.removeApiLevel(oldConfig);
-    QCOMPARE(manager.defaultApiLevel(), newerConfig);
-    QVERIFY(manager.newestApiLevelEnabled());
+    manager->setDefaultConfiguration(oldConfig);
+    manager->removeApiLevel(oldConfig);
+    QCOMPARE(manager->defaultApiLevel(), newerConfig);
+    QVERIFY(manager->newestApiLevelEnabled());
 
-    manager.removeApiLevel(newerConfig);
-    QCOMPARE(manager.defaultApiLevel(), static_cast<BlackBerryApiLevelConfiguration*>(0));
-    QVERIFY(manager.newestApiLevelEnabled());
+    manager->removeApiLevel(newerConfig);
+    QCOMPARE(manager->defaultApiLevel(), static_cast<BlackBerryApiLevelConfiguration*>(0));
+    QVERIFY(manager->newestApiLevelEnabled());
 }
 
 #endif
 
-Q_EXPORT_PLUGIN2(QNX, QNXPlugin)
+Q_EXPORT_PLUGIN2(QNX, QnxPlugin)

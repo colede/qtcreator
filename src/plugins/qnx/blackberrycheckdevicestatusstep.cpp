@@ -121,7 +121,11 @@ void BlackBerryCheckDeviceStatusStep::checkDeviceInfo(int status)
     }
 
     if (m_debugTokenCheckEnabled && !m_deviceInfo->debugTokenValid()) {
-        raiseError(m_deviceInfo->debugTokenValidationError());
+        //: %1: Error message from BlackBerryDeviceInformation
+        const QString errorMsg =
+            tr("%1. Upload a valid debug token into the device.")
+            .arg(m_deviceInfo->debugTokenValidationError());
+        raiseError(errorMsg);
         m_eventLoop->exit(false);
         return;
     }
@@ -146,8 +150,8 @@ void BlackBerryCheckDeviceStatusStep::checkDeviceInfo(int status)
         }
 
         bool ok = true;
-        if (deviceRuntimeVersion.toString() != apiLevelVersion.toString()) {
-            raiseError(tr("The device runtime version (%1) does not match API level version (%2)")
+        if (apiLevelVersion > deviceRuntimeVersion) {
+            raiseError(tr("The device runtime version (%1) is inferior to the API level version (%2)")
                        .arg(deviceRuntimeVersion.toString(), apiLevelVersion.toString()));
 
             QMetaObject::invokeMethod(this, "handleVersionMismatch", Qt::BlockingQueuedConnection,
@@ -183,7 +187,7 @@ bool BlackBerryCheckDeviceStatusStep::handleVersionMismatch(const QString &runti
     // TODO: Check if a matching API level exists in the user configurations,
     // otherwise let the user download the matching device runtime.
     const QMessageBox::StandardButton answer = QMessageBox::question(Core::ICore::mainWindow(), tr("Confirmation"),
-                                                                     tr("The device runtime version(%1) does not match the API level version(%2).\n"
+                                                                     tr("The device runtime version (%1) does not match the API level version (%2).\n"
                                                                         "Do you want to continue anyway?").arg(runtimeVersion, apiLevelVersion),
                                                                      QMessageBox::Yes | QMessageBox::No);
     return answer == QMessageBox::Yes;

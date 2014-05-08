@@ -261,7 +261,7 @@ QListWidgetItem *ProjectListWidget::itemForProject(Project *project)
 
 QString ProjectListWidget::fullName(ProjectExplorer::Project *project)
 {
-    return tr("%1 (%2)").arg(project->displayName(), project->projectFilePath());
+    return tr("%1 (%2)").arg(project->displayName(), project->projectFilePath().toUserOutput());
 }
 
 void ProjectListWidget::addProject(Project *project)
@@ -648,7 +648,7 @@ MiniProjectTargetSelector::MiniProjectTargetSelector(QAction *targetSelectorActi
     m_runConfiguration(0),
     m_hideOnRelease(false)
 {
-    QPalette p = palette();
+    QPalette p;
     p.setColor(QPalette::Text, QColor(255, 255, 255, 160));
     setPalette(p);
     setProperty("panelwidget", true);
@@ -896,7 +896,7 @@ void MiniProjectTargetSelector::doLayout(bool keepSize)
     int heightWithoutKitArea = 0;
 
     if (!onlySummary) {
-        // list widget heigth
+        // list widget height
         int maxItemCount = m_projectListWidget->maxCount();
         for (int i = TARGET; i < LAST; ++i)
             maxItemCount = qMax(maxItemCount, m_listWidgets[i]->maxCount());
@@ -906,7 +906,7 @@ void MiniProjectTargetSelector::doLayout(bool keepSize)
             heightWithoutKitArea = height() - oldSummaryLabelY + 1;
         } else {
             // Clamp the size of the listwidgets to be
-            // at least as high as the the sidebar button
+            // at least as high as the sidebar button
             // and at most twice as high
             heightWithoutKitArea = summaryLabelHeight
                     + qBound(alignedWithActionHeight,
@@ -1512,7 +1512,7 @@ void MiniProjectTargetSelector::updateActionAndSummary()
         projectName = project->displayName();
         foreach (Project *p, SessionManager::projects()) {
             if (p != project && p->displayName() == projectName) {
-                fileName = project->projectFilePath();
+                fileName = project->projectFilePath().toUserOutput();
                 break;
             }
         }

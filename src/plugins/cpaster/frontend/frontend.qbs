@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import QtcTool
 
 QtcTool {
@@ -12,9 +12,8 @@ QtcTool {
     Depends { name: "CppTools" }
 
     cpp.rpaths: [
-        "$ORIGIN/../lib/qtcreator",
-        "$ORIGIN/../lib/qtcreator/plugins",
-        "$ORIGIN/../lib/qtcreator/plugins/QtProject"
+        "$ORIGIN/../" + project.libDirName + "/qtcreator",
+        "$ORIGIN/../" + project.libDirName + "/qtcreator/plugins",
     ]
 
     Group {

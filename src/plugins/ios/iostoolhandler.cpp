@@ -29,6 +29,7 @@
 
 #include "iostoolhandler.h"
 #include "iosconfigurations.h"
+#include "iosconstants.h"
 
 #include <coreplugin/icore.h>
 #include <utils/qtcassert.h>
@@ -65,7 +66,7 @@ struct ParserState {
         ControlChar,
         AppStarted,
         InferiorPid,
-        GdbServerPort,
+        ServerPorts,
         Item,
         Status,
         AppTransfer,
@@ -79,6 +80,7 @@ struct ParserState {
     QString value;
     QMap<QString,QString> info;
     int progress, maxProgress;
+    int gdbPort, qmlPort;
     bool collectChars() {
         switch (kind) {
         case Msg:
@@ -87,9 +89,9 @@ struct ParserState {
         case Value:
         case Status:
         case InferiorPid:
-        case GdbServerPort:
         case AppOutput:
             return true;
+        case ServerPorts:
         case QueryResult:
         case ControlChar:
         case AppStarted:
@@ -103,7 +105,7 @@ struct ParserState {
     }
 
     ParserState(Kind kind) :
-        kind(kind) { }
+        kind(kind), gdbPort(0), qmlPort(0) { }
 };
 
 class IosToolHandlerPrivate
@@ -123,7 +125,7 @@ public:
         OpAppRun
     };
 
-    explicit IosToolHandlerPrivate(IosToolHandler::DeviceType devType, IosToolHandler *q);
+    explicit IosToolHandlerPrivate(IosDeviceType::Enum devType, IosToolHandler *q);
     virtual ~IosToolHandlerPrivate() {}
     virtual void requestTransferApp(const QString &bundlePath, const QString &deviceId,
                                     int timeout = 1000) = 0;
@@ -142,7 +144,8 @@ public:
                         IosToolHandler::OpStatus status);
     void didStartApp(const QString &bundlePath, const QString &deviceId,
                      IosToolHandler::OpStatus status);
-    void gotGdbserverPort(const QString &bundlePath, const QString &deviceId, int gdbPort);
+    void gotServerPorts(const QString &bundlePath, const QString &deviceId, int gdbPort,
+                        int qmlPort);
     void gotInferiorPid(const QString &bundlePath, const QString &deviceId, Q_PID pid);
     void deviceInfo(const QString &deviceId, const IosToolHandler::Dict &info);
     void appOutput(const QString &output);
@@ -166,7 +169,7 @@ protected:
     IosToolHandler::RunKind runKind;
     State state;
     Op op;
-    IosToolHandler::DeviceType devType;
+    IosDeviceType::Enum devType;
     static const int lookaheadSize = 67;
     int iBegin, iEnd, gdbSocket;
     QList<ParserState> stack;
@@ -175,7 +178,7 @@ protected:
 class IosDeviceToolHandlerPrivate : public IosToolHandlerPrivate
 {
 public:
-    explicit IosDeviceToolHandlerPrivate(IosToolHandler::DeviceType devType, IosToolHandler *q);
+    explicit IosDeviceToolHandlerPrivate(IosDeviceType::Enum devType, IosToolHandler *q);
     virtual void requestTransferApp(const QString &bundlePath, const QString &deviceId,
                                     int timeout = 1000);
     virtual void requestRunApp(const QString &bundlePath, const QStringList &extraArgs,
@@ -188,7 +191,7 @@ public:
 class IosSimulatorToolHandlerPrivate : public IosToolHandlerPrivate
 {
 public:
-    explicit IosSimulatorToolHandlerPrivate(IosToolHandler::DeviceType devType, IosToolHandler *q);
+    explicit IosSimulatorToolHandlerPrivate(IosDeviceType::Enum devType, IosToolHandler *q);
     virtual void requestTransferApp(const QString &bundlePath, const QString &deviceId,
                                     int timeout = 1000);
     virtual void requestRunApp(const QString &bundlePath, const QStringList &extraArgs,
@@ -200,7 +203,7 @@ private:
     void addDeviceArguments(QStringList &args) const;
 };
 
-IosToolHandlerPrivate::IosToolHandlerPrivate(IosToolHandler::DeviceType devType,
+IosToolHandlerPrivate::IosToolHandlerPrivate(IosDeviceType::Enum devType,
                                              Ios::IosToolHandler *q) :
     q(q), state(NonStarted), devType(devType), iBegin(0), iEnd(0),
     gdbSocket(-1)
@@ -301,10 +304,10 @@ void IosToolHandlerPrivate::didStartApp(const QString &bundlePath, const QString
     emit q->didStartApp(q, bundlePath, deviceId, status);
 }
 
-void IosToolHandlerPrivate::gotGdbserverPort(const QString &bundlePath,
-                  const QString &deviceId, int gdbPort)
+void IosToolHandlerPrivate::gotServerPorts(const QString &bundlePath,
+                                           const QString &deviceId, int gdbPort, int qmlPort)
 {
-    emit q->gotGdbserverPort(q, bundlePath, deviceId, gdbPort);
+    emit q->gotServerPorts(q, bundlePath, deviceId, gdbPort, qmlPort);
 }
 
 void IosToolHandlerPrivate::gotInferiorPid(const QString &bundlePath, const QString &deviceId,
@@ -439,8 +442,12 @@ void IosToolHandlerPrivate::processXml()
                 stack.append(ParserState(ParserState::DeviceInfo));
             } else if (elName == QLatin1String("inferior_pid")) {
                 stack.append(ParserState(ParserState::InferiorPid));
-            } else if (elName == QLatin1String("gdb_server_port")) {
-                stack.append(ParserState(ParserState::GdbServerPort));
+            } else if (elName == QLatin1String("server_ports")) {
+                stack.append(ParserState(ParserState::ServerPorts));
+                QXmlStreamAttributes attributes = outputParser.attributes();
+                int gdbServerPort = attributes.value(QLatin1String("gdb_server")).toString().toInt();
+                int qmlServerPort = attributes.value(QLatin1String("qml_server")).toString().toInt();
+                gotServerPorts(bundlePath, deviceId, gdbServerPort, qmlServerPort);
             } else {
                 qDebug() << "unexpected element " << elName;
             }
@@ -494,8 +501,7 @@ void IosToolHandlerPrivate::processXml()
             case ParserState::InferiorPid:
                 gotInferiorPid(bundlePath, deviceId, Q_PID(p.chars.toInt()));
                 break;
-            case ParserState::GdbServerPort:
-                gotGdbserverPort(bundlePath, deviceId, p.chars.toInt());
+            case ParserState::ServerPorts:
                 break;
             }
             break;
@@ -571,7 +577,7 @@ void IosToolHandlerPrivate::subprocessHasData()
 
 // IosDeviceToolHandlerPrivate
 
-IosDeviceToolHandlerPrivate::IosDeviceToolHandlerPrivate(IosToolHandler::DeviceType devType,
+IosDeviceToolHandlerPrivate::IosDeviceToolHandlerPrivate(IosDeviceType::Enum devType,
                                                          IosToolHandler *q)
     : IosToolHandlerPrivate(devType, q)
 { }
@@ -630,7 +636,7 @@ bool IosDeviceToolHandlerPrivate::expectsFileDescriptor()
 
 // IosSimulatorToolHandlerPrivate
 
-IosSimulatorToolHandlerPrivate::IosSimulatorToolHandlerPrivate(IosToolHandler::DeviceType devType,
+IosSimulatorToolHandlerPrivate::IosSimulatorToolHandlerPrivate(IosDeviceType::Enum devType,
                                                          IosToolHandler *q)
     : IosToolHandlerPrivate(devType, q)
 { }
@@ -690,23 +696,23 @@ bool IosSimulatorToolHandlerPrivate::expectsFileDescriptor()
 void IosSimulatorToolHandlerPrivate::addDeviceArguments(QStringList &args) const
 {
     switch (devType) {
-    case IosToolHandler::IosDeviceType:
+    case IosDeviceType::IosDevice:
         qDebug() << "IosSimulatorToolHandlerPrivate has device type IosDeviceType";
         break;
-    case IosToolHandler::IosSimulatedIphoneType:
+    case IosDeviceType::SimulatedIphone:
         args << QLatin1String("--family") << QLatin1String("iphone");
         break;
-    case IosToolHandler::IosSimulatedIpadType:
+    case IosDeviceType::SimulatedIpad:
         args << QLatin1String("--family") << QLatin1String("ipad");
         break;
-    case IosToolHandler::IosSimulatedIphoneRetina4InchType:
+    case IosDeviceType::SimulatedIphoneRetina4Inch:
         args << QLatin1String("--family") << QLatin1String("iphone")
              << QLatin1String("--retina") << QLatin1String("--tall");
         break;
-    case IosToolHandler::IosSimulatedIphoneRetina3_5InchType:
+    case IosDeviceType::SimulatedIphoneRetina3_5Inch:
         args << QLatin1String("--family") << QLatin1String("iphone") << QLatin1String("--retina");
         break;
-    case IosToolHandler::IosSimulatedIpadRetinaType:
+    case IosDeviceType::SimulatedIpadRetina:
         args << QLatin1String("--family") << QLatin1String("ipad") << QLatin1String("--retina");
         break;
     }
@@ -728,14 +734,20 @@ QString IosToolHandler::iosDeviceToolPath()
 
 QString IosToolHandler::iosSimulatorToolPath()
 {
+    Utils::FileName devPath = Internal::IosConfigurations::developerPath();
+    bool version182 = devPath.appendPath(QLatin1String(
+        "Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks/iPhoneSimulatorRemoteClient.framework"))
+            .toFileInfo().exists();
     QString res = Core::ICore::libexecPath() + QLatin1String("/ios/iossim");
+    if (version182)
+        res = res.append(QLatin1String("_1_8_2"));
     return res;
 }
 
-IosToolHandler::IosToolHandler(DeviceType devType, QObject *parent) :
+IosToolHandler::IosToolHandler(IosDeviceType::Enum devType, QObject *parent) :
     QObject(parent)
 {
-    if (devType == IosDeviceType)
+    if (devType == IosDeviceType::IosDevice)
         d = new Internal::IosDeviceToolHandlerPrivate(devType, this);
     else
         d = new Internal::IosSimulatorToolHandlerPrivate(devType, this);

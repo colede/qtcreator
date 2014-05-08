@@ -46,6 +46,7 @@
 #include <QRegExp>
 #include <QSet>
 #include <QTemporaryFile>
+#include <QTextCodec>
 #include <QDir>
 
 #include <QTextCursor>
@@ -303,7 +304,7 @@ void GitEditor::applyDiffChunk(const VcsBase::DiffChunk& chunk, bool revert)
 void GitEditor::init()
 {
     VcsBase::VcsBaseEditorWidget::init();
-    Core::Id editorId = editor()->id();
+    Core::Id editorId = editor()->document()->id();
     if (editorId == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID)
         new GitSubmitHighlighter(baseTextDocument());
     else if (editorId == Git::Constants::GIT_REBASE_EDITOR_ID)
@@ -325,14 +326,16 @@ void GitEditor::addDiffActions(QMenu *menu, const VcsBase::DiffChunk &chunk)
 
 bool GitEditor::open(QString *errorString, const QString &fileName, const QString &realFileName)
 {
-    bool res = VcsBaseEditorWidget::open(errorString, fileName, realFileName);
-    Core::Id editorId = editor()->id();
+    Core::Id editorId = editor()->document()->id();
     if (editorId == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID
             || editorId == Git::Constants::GIT_REBASE_EDITOR_ID) {
         QFileInfo fi(fileName);
-        setSource(fi.absolutePath());
+        const QString gitPath = fi.absolutePath();
+        setSource(gitPath);
+        baseTextDocument()->setCodec(
+                    GitPlugin::instance()->gitClient()->encoding(gitPath, "i18n.commitEncoding"));
     }
-    return res;
+    return VcsBaseEditorWidget::open(errorString, fileName, realFileName);
 }
 
 QString GitEditor::decorateVersion(const QString &revision) const
@@ -391,8 +394,8 @@ QString GitEditor::revisionSubject(const QTextBlock &inBlock) const
 bool GitEditor::supportChangeLinks() const
 {
     return VcsBaseEditorWidget::supportChangeLinks()
-            || (editor()->id() == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID)
-            || (editor()->id() == Git::Constants::GIT_REBASE_EDITOR_ID);
+            || (editor()->document()->id() == Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID)
+            || (editor()->document()->id() == Git::Constants::GIT_REBASE_EDITOR_ID);
 }
 
 QString GitEditor::fileNameForLine(int line) const

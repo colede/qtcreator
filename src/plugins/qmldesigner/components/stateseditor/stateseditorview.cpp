@@ -32,7 +32,6 @@
 #include "stateseditormodel.h"
 #include <rewritingexception.h>
 
-#include <QMessageBox>
 #include <QDebug>
 #include <math.h>
 
@@ -42,6 +41,7 @@
 #include <nodelistproperty.h>
 
 #include <qmlitemnode.h>
+
 
 namespace QmlDesigner {
 
@@ -83,7 +83,7 @@ void StatesEditorView::propertiesAboutToBeRemoved(const QList<AbstractProperty> 
 
 void StatesEditorView::rootNodeTypeChanged(const QString &/*type*/, int /*majorVersion*/, int /*minorVersion*/)
 {
-    checkForApplicationWindow();
+    checkForWindow();
 }
 
 void StatesEditorView::instancePropertyChange(const QList<QPair<ModelNode, PropertyName> > &/*propertyList*/)
@@ -158,7 +158,7 @@ void StatesEditorView::removeState(int nodeId)
             stateNode.destroy();
         }
     }  catch (RewritingException &e) {
-        QMessageBox::warning(0, "Error", e.description());
+        e.showException();
     }
 }
 
@@ -209,7 +209,7 @@ void StatesEditorView::addState()
         ModelNode newState = rootStateGroup().addState(newStateName);
         setCurrentState(newState);
     }  catch (RewritingException &e) {
-        QMessageBox::warning(0, "Error", e.description());
+        e.showException();
     }
 }
 
@@ -249,10 +249,10 @@ void StatesEditorView::duplicateCurrentState()
     setCurrentState(newState);
 }
 
-void StatesEditorView::checkForApplicationWindow()
+void StatesEditorView::checkForWindow()
 {
     if (m_statesEditorWidget)
-        m_statesEditorWidget->showAddNewStatesButton(!rootModelNode().metaInfo().isSubclassOf("QtQuick.Controls.ApplicationWindow", -1, -1));
+        m_statesEditorWidget->showAddNewStatesButton(!rootModelNode().metaInfo().isSubclassOf("QtQuick.Window.Window", -1, -1));
 }
 
 void StatesEditorView::setCurrentState(const QmlModelState &state)
@@ -304,7 +304,7 @@ void StatesEditorView::renameState(int nodeId, const QString &newName)
                 setCurrentState(oldState);
             }
         }  catch (RewritingException &e) {
-            QMessageBox::warning(0, "Error", e.description());
+            e.showException();
         }
     }
 }
@@ -320,7 +320,7 @@ void StatesEditorView::modelAttached(Model *model)
     if (m_statesEditorWidget)
         m_statesEditorWidget->setNodeInstanceView(nodeInstanceView());
 
-    checkForApplicationWindow();
+    checkForWindow();
 
     resetModel();
 }

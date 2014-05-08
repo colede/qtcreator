@@ -71,6 +71,7 @@ BranchDialog::BranchDialog(QWidget *parent) :
     connect(m_ui->renameButton, SIGNAL(clicked()), this, SLOT(rename()));
     connect(m_ui->diffButton, SIGNAL(clicked()), this, SLOT(diff()));
     connect(m_ui->logButton, SIGNAL(clicked()), this, SLOT(log()));
+    connect(m_ui->resetButton, SIGNAL(clicked()), this, SLOT(reset()));
     connect(m_ui->mergeButton, SIGNAL(clicked()), this, SLOT(merge()));
     connect(m_ui->rebaseButton, SIGNAL(clicked()), this, SLOT(rebase()));
     connect(m_ui->cherryPickButton, SIGNAL(clicked()), this, SLOT(cherryPick()));
@@ -127,6 +128,7 @@ void BranchDialog::enableButtons()
     m_ui->diffButton->setEnabled(hasActions);
     m_ui->checkoutButton->setEnabled(hasActions && !currentSelected);
     m_ui->rebaseButton->setEnabled(hasActions && !currentSelected);
+    m_ui->resetButton->setEnabled(hasActions && currentLocal && !currentSelected);
     m_ui->mergeButton->setEnabled(hasActions && !currentSelected);
     m_ui->cherryPickButton->setEnabled(hasActions && !currentSelected);
     m_ui->trackButton->setEnabled(hasActions && currentLocal && !currentSelected && !isTag);
@@ -162,7 +164,7 @@ void BranchDialog::add()
     branchAddDialog.setBranchName(suggestedName);
     branchAddDialog.setTrackedBranchName(isTag ? QString() : trackedBranch, !isLocal);
 
-    if (branchAddDialog.exec() == QDialog::Accepted && m_model) {
+    if (branchAddDialog.exec() == QDialog::Accepted) {
         QModelIndex idx = m_model->addBranch(branchAddDialog.branchName(), branchAddDialog.track(), trackedIndex);
         if (!idx.isValid())
             return;
@@ -254,11 +256,11 @@ void BranchDialog::remove()
     const bool wasMerged = isTag ? true : m_model->branchIsMerged(selected);
     QString message;
     if (isTag)
-        message = tr("Would you like to delete the tag '%1'?").arg(branchName);
+        message = tr("Would you like to delete the tag \"%1\"?").arg(branchName);
     else if (wasMerged)
-        message = tr("Would you like to delete the branch '%1'?").arg(branchName);
+        message = tr("Would you like to delete the branch \"%1\"?").arg(branchName);
     else
-        message = tr("Would you like to delete the <b>unmerged</b> branch '%1'?").arg(branchName);
+        message = tr("Would you like to delete the <b>unmerged</b> branch \"%1\"?").arg(branchName);
 
     if (QMessageBox::question(this, isTag ? tr("Delete Tag") : tr("Delete Branch"),
                               message, QMessageBox::Yes | QMessageBox::No,
@@ -318,6 +320,22 @@ void BranchDialog::log()
         return;
     // Do not pass working dir by reference since it might change
     GitPlugin::instance()->gitClient()->log(QString(m_repository), QString(), false, QStringList(branchName));
+}
+
+void BranchDialog::reset()
+{
+    QString currentName = m_model->fullName(m_model->currentBranch());
+    QString branchName = m_model->fullName(selectedIndex());
+    if (currentName.isEmpty() || branchName.isEmpty())
+        return;
+
+    if (QMessageBox::question(this, tr("Git Reset"), tr("Hard reset branch \"%1\" to \"%2\"?")
+                              .arg(currentName).arg(branchName),
+                              QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes) {
+        GitPlugin::instance()->gitClient()->reset(QString(m_repository), QLatin1String("--hard"),
+                                                  branchName);
+
+    }
 }
 
 void BranchDialog::merge()

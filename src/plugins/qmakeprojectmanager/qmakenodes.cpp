@@ -183,6 +183,7 @@ using namespace QmakeProjectManager::Internal;
 QmakePriFile::QmakePriFile(QmakeProjectManager::QmakePriFileNode *qmakePriFile)
     : IDocument(qmakePriFile), m_priFile(qmakePriFile)
 {
+    setId("Qmake.PriFile");
     setFilePath(m_priFile->path());
 }
 
@@ -816,11 +817,11 @@ bool QmakePriFileNode::deploysFolder(const QString &folder) const
     return false;
 }
 
-QList<ProjectExplorer::RunConfiguration *> QmakePriFileNode::runConfigurationsFor(Node *node)
+QList<ProjectExplorer::RunConfiguration *> QmakePriFileNode::runConfigurations() const
 {
     QmakeRunConfigurationFactory *factory = QmakeRunConfigurationFactory::find(m_project->activeTarget());
     if (factory)
-        return factory->runConfigurationsForNode(m_project->activeTarget(), node);
+        return factory->runConfigurationsForNode(m_project->activeTarget(), this);
     return QList<ProjectExplorer::RunConfiguration *>();
 }
 
@@ -1044,18 +1045,7 @@ bool QmakePriFileNode::removeFiles(const QStringList &filePaths,
 
 bool QmakePriFileNode::deleteFiles(const QStringList &filePaths)
 {
-    QStringList failedFiles;
-    typedef QMap<QString, QStringList> TypeFileMap;
-    // Split into lists by file type and bulk-add them.
-    TypeFileMap typeFileMap;
-    foreach (const QString file, filePaths) {
-        const Core::MimeType mt = Core::MimeDatabase::findByFile(file);
-        typeFileMap[mt.type()] << file;
-    }
-    foreach (const QString &type, typeFileMap.keys()) {
-        const QStringList typeFiles = typeFileMap.value(type);
-        changeFiles(type, typeFiles, &failedFiles, RemoveFromProFile);
-    }
+    removeFiles(filePaths);
     return true;
 }
 
@@ -1077,10 +1067,10 @@ bool QmakePriFileNode::renameFile(const QString &filePath, const QString &newFil
     return true;
 }
 
-ProjectExplorer::FolderNode::AddNewInformation QmakePriFileNode::addNewInformation(const QStringList &files) const
+ProjectExplorer::FolderNode::AddNewInformation QmakePriFileNode::addNewInformation(const QStringList &files, Node *context) const
 {
     Q_UNUSED(files)
-    return ProjectExplorer::FolderNode::AddNewInformation(QFileInfo(path()).fileName(), 90);
+    return ProjectExplorer::FolderNode::AddNewInformation(QFileInfo(path()).fileName(), context == this ? 120 : 90);
 }
 
 bool QmakePriFileNode::priFileWritable(const QString &path)
@@ -1210,13 +1200,13 @@ void QmakePriFileNode::changeFiles(const QString &mimeType,
     if (!includeFile)
         return;
 
-    QDir priFileDir = QDir(m_qmakeProFileNode->m_projectDir);
 
     if (change == AddToProFile) {
         // Use the first variable for adding.
-        ProWriter::addFiles(includeFile, &lines, priFileDir, filePaths, varNameForAdding(mimeType));
+        ProWriter::addFiles(includeFile, &lines, filePaths, varNameForAdding(mimeType));
         notChanged->clear();
     } else { // RemoveFromProFile
+        QDir priFileDir = QDir(m_qmakeProFileNode->m_projectDir);
         *notChanged = ProWriter::removeFiles(includeFile, &lines, priFileDir, filePaths, varNamesForRemoving());
     }
 
@@ -1225,7 +1215,7 @@ void QmakePriFileNode::changeFiles(const QString &mimeType,
     includeFile->deref();
 }
 
-bool QmakePriFileNode::setProVariable(const QString &var, const QString &value)
+bool QmakePriFileNode::setProVariable(const QString &var, const QStringList &values, const QString &scope, int flags)
 {
     if (!ensureWriteableProFile(m_projectFilePath))
         return false;
@@ -1234,8 +1224,9 @@ bool QmakePriFileNode::setProVariable(const QString &var, const QString &value)
     ProFile *includeFile = pair.first;
     QStringList lines = pair.second;
 
-    ProWriter::putVarValues(includeFile, &lines, QStringList(value), var,
-                            ProWriter::ReplaceValues | ProWriter::OneLine | ProWriter::AssignOperator);
+    ProWriter::putVarValues(includeFile, &lines, values, var,
+                            ProWriter::PutFlags(flags),
+                            scope);
 
     if (!includeFile)
         return false;
@@ -1578,18 +1569,18 @@ bool QmakeProFileNode::isParent(QmakeProFileNode *node)
     return false;
 }
 
-bool QmakeProFileNode::hasBuildTargets() const
+bool QmakeProFileNode::showInSimpleTree() const
 {
-    return hasBuildTargets(projectType());
+    return showInSimpleTree(projectType()) || m_project->rootProjectNode() == this;
 }
 
-ProjectExplorer::FolderNode::AddNewInformation QmakeProFileNode::addNewInformation(const QStringList &files) const
+ProjectExplorer::FolderNode::AddNewInformation QmakeProFileNode::addNewInformation(const QStringList &files, Node *context) const
 {
     Q_UNUSED(files)
-    return AddNewInformation(QFileInfo(path()).fileName(), 100);
+    return AddNewInformation(QFileInfo(path()).fileName(), context == this ? 120 : 100);
 }
 
-bool QmakeProFileNode::hasBuildTargets(QmakeProjectType projectType) const
+bool QmakeProFileNode::showInSimpleTree(QmakeProjectType projectType) const
 {
     return (projectType == ApplicationTemplate || projectType == LibraryTemplate);
 }
@@ -1799,15 +1790,15 @@ void QmakeProFileNode::applyEvaluate(EvalResult evalResult, bool async)
         removeProjectNodes(subProjectNodes());
         removeFolderNodes(subFolderNodes());
 
-        bool changesHasBuildTargets = hasBuildTargets() ^ hasBuildTargets(projectType);
+        bool changesShowInSimpleTree = showInSimpleTree() ^ showInSimpleTree(projectType);
 
-        if (changesHasBuildTargets)
-            aboutToChangeHasBuildTargets();
+        if (changesShowInSimpleTree)
+            aboutToChangeShowInSimpleTree();
 
         m_projectType = projectType;
 
-        if (changesHasBuildTargets)
-            hasBuildTargetsChanged();
+        if (changesShowInSimpleTree)
+            showInSimpleTreeChanged();
 
         // really emit here? or at the end? Nobody is connected to this signal at the moment
         // so we kind of can ignore that question for now
@@ -1999,13 +1990,46 @@ void QmakeProFileNode::applyEvaluate(EvalResult evalResult, bool async)
 
     m_validParse = (evalResult == EvalOk);
     if (m_validParse) {
+        // create build_pass reader
+        QtSupport::ProFileReader *readerBuildPass = 0;
+        QStringList builds = m_readerExact->values(QLatin1String("BUILDS"));
+        if (builds.isEmpty()) {
+            readerBuildPass = m_readerExact;
+        } else {
+            QString build = builds.first();
+            QHash<QString, QStringList> basevars;
+            QStringList basecfgs = m_readerExact->values(build + QLatin1String(".CONFIG"));
+            basecfgs += build;
+            basecfgs += QLatin1String("build_pass");
+            basevars[QLatin1String("BUILD_PASS")] = QStringList(build);
+            QStringList buildname = m_readerExact->values(build + QLatin1String(".name"));
+            basevars[QLatin1String("BUILD_NAME")] = (buildname.isEmpty() ? QStringList(build) : buildname);
+
+            readerBuildPass = m_project->createProFileReader(this);
+            readerBuildPass->setExtraVars(basevars);
+            readerBuildPass->setExtraConfigs(basecfgs);
+
+            EvalResult evalResult = EvalOk;
+            if (ProFile *pro = readerBuildPass->parsedProFile(m_projectFilePath)) {
+                if (!readerBuildPass->accept(pro, QMakeEvaluator::LoadAll))
+                    evalResult = EvalPartial;
+                pro->deref();
+            } else {
+                evalResult = EvalFail;
+            }
+
+            if (evalResult != EvalOk) {
+                m_project->destroyProFileReader(readerBuildPass);
+                readerBuildPass = 0;
+            }
+        }
 
         // update TargetInformation
-        m_qmakeTargetInformation = targetInformation(m_readerExact);
+        m_qmakeTargetInformation = targetInformation(m_readerExact, readerBuildPass);
         m_resolvedMkspecPath = m_readerExact->resolvedMkSpec();
 
         m_subProjectsNotToDeploy = subProjectsNotToDeploy;
-        setupInstallsList(m_readerExact);
+        setupInstallsList(readerBuildPass);
 
         QString buildDirectory = buildDir();
         // update other variables
@@ -2064,6 +2088,9 @@ void QmakeProFileNode::applyEvaluate(EvalResult evalResult, bool async)
                 }
             }
         }
+
+        if (readerBuildPass && readerBuildPass != m_readerExact)
+            m_project->destroyProFileReader(readerBuildPass);
 
         if (m_varValues != newVarValues) {
             QmakeVariablesHash oldValues = m_varValues;
@@ -2200,7 +2227,7 @@ QStringList QmakeProFileNode::subDirsPaths(QtSupport::ProFileReader *reader, QSt
             }
         } else {
             if (!silent)
-                QmakeProject::proFileParseError(tr("Could not find .pro file for sub dir '%1' in '%2'")
+                QmakeProject::proFileParseError(tr("Could not find .pro file for sub dir \"%1\" in \"%2\"")
                                               .arg(subDirVar).arg(realDir));
         }
     }
@@ -2209,60 +2236,30 @@ QStringList QmakeProFileNode::subDirsPaths(QtSupport::ProFileReader *reader, QSt
     return subProjectPaths;
 }
 
-TargetInformation QmakeProFileNode::targetInformation(QtSupport::ProFileReader *reader) const
+TargetInformation QmakeProFileNode::targetInformation(QtSupport::ProFileReader *reader, QtSupport::ProFileReader *readerBuildPass) const
 {
     TargetInformation result;
-    if (!reader)
+    if (!reader || !readerBuildPass)
         return result;
 
-    QtSupport::ProFileReader *readerBP = 0;
     QStringList builds = reader->values(QLatin1String("BUILDS"));
     if (!builds.isEmpty()) {
         QString build = builds.first();
         result.buildTarget = reader->value(build + QLatin1String(".target"));
-
-        QHash<QString, QStringList> basevars;
-        QStringList basecfgs = reader->values(build + QLatin1String(".CONFIG"));
-        basecfgs += build;
-        basecfgs += QLatin1String("build_pass");
-        basevars[QLatin1String("BUILD_PASS")] = QStringList(build);
-        QStringList buildname = reader->values(build + QLatin1String(".name"));
-        basevars[QLatin1String("BUILD_NAME")] = (buildname.isEmpty() ? QStringList(build) : buildname);
-
-        readerBP = m_project->createProFileReader(this);
-        readerBP->setExtraVars(basevars);
-        readerBP->setExtraConfigs(basecfgs);
-
-        EvalResult evalResult = EvalOk;
-        if (ProFile *pro = readerBP->parsedProFile(m_projectFilePath)) {
-            if (!readerBP->accept(pro, QMakeEvaluator::LoadAll))
-                evalResult = EvalPartial;
-            pro->deref();
-        } else {
-            evalResult = EvalFail;
-        }
-
-        if (evalResult != EvalOk)
-            return result;
-
-        reader = readerBP;
     }
 
     // BUILD DIR
     result.buildDir = buildDir();
 
-    if (reader->contains(QLatin1String("DESTDIR")))
-        result.destDir = reader->value(QLatin1String("DESTDIR"));
+    if (readerBuildPass->contains(QLatin1String("DESTDIR")))
+        result.destDir = readerBuildPass->value(QLatin1String("DESTDIR"));
 
     // Target
-    result.target = reader->value(QLatin1String("TARGET"));
+    result.target = readerBuildPass->value(QLatin1String("TARGET"));
     if (result.target.isEmpty())
         result.target = QFileInfo(m_projectFilePath).baseName();
 
     result.valid = true;
-
-    if (readerBP)
-        m_project->destroyProFileReader(readerBP);
 
     return result;
 }

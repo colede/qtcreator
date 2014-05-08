@@ -51,8 +51,10 @@ public:
     explicit WatchTreeView(Type type, QWidget *parent = 0);
     Type type() const { return m_type; }
     void setModel(QAbstractItemModel *model);
-    void rowClicked(const QModelIndex &index);
+    void rowActivated(const QModelIndex &index);
     void reset();
+
+    void fillFormatMenu(QMenu *, const QModelIndex &mi);
 
 public slots:
     void watchExpression(const QString &exp);
@@ -62,11 +64,19 @@ public slots:
 signals:
     void currentIndexChanged(const QModelIndex &currentIndex);
 
-private:
-    Q_SLOT void resetHelper();
-    Q_SLOT void expandNode(const QModelIndex &idx);
-    Q_SLOT void collapseNode(const QModelIndex &idx);
+private slots:
+    void resetHelper();
+    void expandNode(const QModelIndex &idx);
+    void collapseNode(const QModelIndex &idx);
 
+    void onClearIndividualFormat();
+    void onClearTypeFormat();
+    void onShowUnprintable();
+
+    void onTypeFormatChange();
+    void onIndividualFormatChange();
+
+private:
     void keyPressEvent(QKeyEvent *ev);
     void contextMenuEvent(QContextMenuEvent *ev);
     void dragEnterEvent(QDragEnterEvent *ev);

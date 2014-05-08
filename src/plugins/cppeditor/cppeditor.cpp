@@ -39,7 +39,6 @@
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/icore.h>
 #include <cpptools/cpptoolseditorsupport.h>
 #include <cpptools/cpptoolsplugin.h>
 #include <cpptools/cpptoolsconstants.h>
@@ -66,6 +65,7 @@
 #include <texteditor/refactoroverlay.h>
 
 #include <utils/qtcassert.h>
+#include <utils/treeviewcombobox.h>
 
 #include <cplusplus/ASTPath.h>
 #include <cplusplus/ExpressionUnderCursor.h>
@@ -80,8 +80,6 @@
 #include <QHeaderView>
 #include <QMenu>
 #include <QTextEdit>
-#include <QComboBox>
-#include <QTreeView>
 #include <QSortFilterProxyModel>
 #include <QToolButton>
 
@@ -96,64 +94,6 @@ using namespace CppTools;
 using namespace CppEditor::Internal;
 
 namespace {
-
-class OverviewTreeView : public QTreeView
-{
-public:
-    OverviewTreeView(QWidget *parent = 0)
-        : QTreeView(parent)
-    {
-        // TODO: Disable the root for all items (with a custom delegate?)
-        setRootIsDecorated(false);
-    }
-
-    void sync()
-    {
-        expandAll();
-    }
-
-    void adjustWidth()
-    {
-        const int w = Core::ICore::mainWindow()->geometry().width();
-        setMaximumWidth(w);
-        setMinimumWidth(qMin(qMax(sizeHintForColumn(0), minimumSizeHint().width()), w));
-    }
-};
-
-class OverviewCombo : public QComboBox
-{
-public:
-    OverviewCombo(QWidget *parent = 0) : QComboBox(parent), m_skipNextHide(false)
-    {}
-
-    bool eventFilter(QObject* object, QEvent* event)
-    {
-        if (event->type() == QEvent::MouseButtonPress && object == view()->viewport()) {
-            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-            QModelIndex index = view()->indexAt(mouseEvent->pos());
-            if (!view()->visualRect(index).contains(mouseEvent->pos()))
-                m_skipNextHide = true;
-        }
-        return false;
-    }
-
-    void showPopup()
-    {
-        static_cast<OverviewTreeView *>(view())->adjustWidth();
-        QComboBox::showPopup();
-    }
-
-    virtual void hidePopup()
-    {
-        if (m_skipNextHide)
-            m_skipNextHide = false;
-        else
-            QComboBox::hidePopup();
-    }
-
-private:
-    bool m_skipNextHide;
-};
 
 class OverviewProxyModel : public QSortFilterProxyModel
 {
@@ -526,11 +466,11 @@ CPPEditorWidget::CPPEditorWidget(CPPEditorWidget *other)
 
 void CPPEditorWidget::ctor()
 {
+    m_cppEditorDocument = qobject_cast<CPPEditorDocument *>(baseTextDocument());
     m_currentRenameSelection = NoCurrentRenameSelection;
     m_inRename = false;
     m_inRenameChanged = false;
     m_firstRenameChange = false;
-    m_objcEnabled = false;
     m_commentsSettings = CppTools::CppToolsSettings::instance()->commentsSettings();
     m_followSymbolUnderCursor.reset(new FollowSymbolUnderCursor(this));
     m_preprocessorButton = 0;
@@ -572,16 +512,18 @@ void CPPEditorWidget::ctor()
 
     connect(baseTextDocument(), SIGNAL(filePathChanged(QString,QString)),
             this, SLOT(onFilePathChanged()));
-    connect(baseTextDocument(), SIGNAL(mimeTypeChanged()),
-            this, SLOT(onMimeTypeChanged()));
     onFilePathChanged();
-    onMimeTypeChanged();
 }
 
 CPPEditorWidget::~CPPEditorWidget()
 {
     if (m_modelManager)
         m_modelManager->deleteCppEditorSupport(editor());
+}
+
+CPPEditorDocument *CPPEditorWidget::cppEditorDocument() const
+{
+    return m_cppEditorDocument;
 }
 
 TextEditor::BaseTextEditor *CPPEditorWidget::createEditor()
@@ -593,20 +535,14 @@ TextEditor::BaseTextEditor *CPPEditorWidget::createEditor()
 
 void CPPEditorWidget::createToolBar(CPPEditor *editor)
 {
-    m_outlineCombo = new OverviewCombo;
+    m_outlineCombo = new Utils::TreeViewComboBox;
     m_outlineCombo->setMinimumContentsLength(22);
 
     // Make the combo box prefer to expand
     QSizePolicy policy = m_outlineCombo->sizePolicy();
     policy.setHorizontalPolicy(QSizePolicy::Expanding);
     m_outlineCombo->setSizePolicy(policy);
-
-    QTreeView *outlineView = new OverviewTreeView;
-    outlineView->header()->hide();
-    outlineView->setItemsExpandable(true);
-    m_outlineCombo->setView(outlineView);
     m_outlineCombo->setMaxVisibleItems(40);
-    outlineView->viewport()->installEventFilter(m_outlineCombo);
 
     m_outlineModel = new OverviewModel(this);
     m_proxyModel = new OverviewProxyModel(m_outlineModel, this);
@@ -647,7 +583,7 @@ void CPPEditorWidget::createToolBar(CPPEditor *editor)
     connect(m_updateFunctionDeclDefLinkTimer, SIGNAL(timeout()),
             this, SLOT(updateFunctionDeclDefLinkNow()));
 
-    connect(m_outlineCombo, SIGNAL(activated(int)), this, SLOT(jumpToOutlineElement(int)));
+    connect(m_outlineCombo, SIGNAL(activated(int)), this, SLOT(jumpToOutlineElement()));
     connect(this, SIGNAL(cursorPositionChanged()), this, SLOT(updateOutlineIndex()));
     connect(m_outlineCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(updateOutlineToolTip()));
 
@@ -717,14 +653,6 @@ void CPPEditorWidget::selectAll()
 
     BaseTextEditorWidget::selectAll();
 }
-
-void CPPEditorWidget::setObjCEnabled(bool onoff)
-{
-    m_objcEnabled = onoff;
-}
-
-bool CPPEditorWidget::isObjCEnabled() const
-{ return m_objcEnabled; }
 
 void CPPEditorWidget::startRename()
 {
@@ -969,7 +897,7 @@ void CPPEditorWidget::renameSymbolUnderCursor()
         return;
 
     CppEditorSupport *edSup = m_modelManager->cppEditorSupport(editor());
-    updateSemanticInfo(edSup->recalculateSemanticInfo(/* emitSignalWhenFinished = */ false));
+    updateSemanticInfo(edSup->recalculateSemanticInfo());
     abortRename();
 
     QTextCursor c = textCursor();
@@ -1027,20 +955,9 @@ void CPPEditorWidget::updatePreprocessorButtonTooltip()
     m_preprocessorButton->setToolTip(cmd->action()->toolTip());
 }
 
-void CPPEditorWidget::jumpToOutlineElement(int index)
+void CPPEditorWidget::jumpToOutlineElement()
 {
     QModelIndex modelIndex = m_outlineCombo->view()->currentIndex();
-    // When the user clicks on an item in the combo box,
-    // the view's currentIndex is updated, so we want to use that.
-    // When the scroll wheel was used on the combo box,
-    // the view's currentIndex is not updated,
-    // but the passed index to this function is correct.
-    // So, if the view has a current index, we reset it, to be able
-    // to distinguish wheel events later
-    if (modelIndex.isValid())
-        m_outlineCombo->view()->setCurrentIndex(QModelIndex());
-    else
-        modelIndex = m_proxyModel->index(index, 0); // toplevel index
     QModelIndex sourceIndex = m_proxyModel->mapToSource(modelIndex);
     Symbol *symbol = m_outlineModel->symbolFromIndex(sourceIndex);
     if (!symbol)
@@ -1088,8 +1005,7 @@ void CPPEditorWidget::updateOutlineNow()
 
     m_outlineModel->rebuild(document);
 
-    OverviewTreeView *treeView = static_cast<OverviewTreeView *>(m_outlineCombo->view());
-    treeView->sync();
+    m_outlineCombo->view()->expandAll();
     updateOutlineIndexNow();
 }
 
@@ -1145,10 +1061,7 @@ void CPPEditorWidget::updateOutlineIndexNow()
     if (comboIndex.isValid()) {
         bool blocked = m_outlineCombo->blockSignals(true);
 
-        // There is no direct way to select a non-root item
-        m_outlineCombo->setRootModelIndex(m_proxyModel->mapFromSource(comboIndex.parent()));
-        m_outlineCombo->setCurrentIndex(m_proxyModel->mapFromSource(comboIndex).row());
-        m_outlineCombo->setRootModelIndex(QModelIndex());
+        m_outlineCombo->setCurrentIndex(m_proxyModel->mapFromSource(comboIndex));
 
         updateOutlineToolTip();
 
@@ -1163,11 +1076,6 @@ void CPPEditorWidget::updateOutlineToolTip()
 
 void CPPEditorWidget::updateUses()
 {
-    if (m_highlightWatcher) {
-        m_highlightWatcher->cancel();
-        m_highlightWatcher.reset();
-    }
-
     // Block premature semantic info calculation when editor is created.
     if (m_modelManager && m_modelManager->cppEditorSupport(editor())->initialized())
         m_updateUsesTimer->start();
@@ -1505,11 +1413,6 @@ Core::IEditor *CPPEditor::duplicate()
     return newEditor->editor();
 }
 
-Core::Id CPPEditor::id() const
-{
-    return CppEditor::Constants::CPPEDITOR_ID;
-}
-
 bool CPPEditor::open(QString *errorString, const QString &fileName, const QString &realFileName)
 {
     if (!TextEditor::BaseTextEditor::open(errorString, fileName, realFileName))
@@ -1606,8 +1509,12 @@ bool CPPEditorWidget::openCppEditorAt(const Link &link, bool inNextSplit)
 
 void CPPEditorWidget::semanticRehighlight(bool force)
 {
-    if (m_modelManager)
-        m_modelManager->cppEditorSupport(editor())->recalculateSemanticInfoDetached(force);
+    if (m_modelManager) {
+        const CppEditorSupport::ForceReason forceReason = force
+                ? CppEditorSupport::ForceDueEditorRequest
+                : CppEditorSupport::NoForce;
+        m_modelManager->cppEditorSupport(editor())->recalculateSemanticInfoDetached(forceReason);
+    }
 }
 
 void CPPEditorWidget::highlighterStarted(QFuture<TextEditor::HighlightingResult> *highlighter,
@@ -1822,13 +1729,6 @@ void CPPEditorWidget::onFilePathChanged()
     m_preprocessorButton->update();
 }
 
-void CPPEditorWidget::onMimeTypeChanged()
-{
-    const QString &mt = baseTextDocument()->mimeType();
-    setObjCEnabled(mt == QLatin1String(CppTools::Constants::OBJECTIVE_C_SOURCE_MIMETYPE)
-                   || mt == QLatin1String(CppTools::Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE));
-}
-
 void CPPEditorWidget::applyDeclDefLinkChanges(bool jumpToMatch)
 {
     if (!m_declDefLink)
@@ -1983,9 +1883,18 @@ void CPPEditorWidget::showPreProcessorWidget()
 
 CPPEditorDocument::CPPEditorDocument()
 {
+    setId(CppEditor::Constants::CPPEDITOR_ID);
     connect(this, SIGNAL(tabSettingsChanged()),
             this, SLOT(invalidateFormatterCache()));
+    connect(this, SIGNAL(mimeTypeChanged()),
+            this, SLOT(onMimeTypeChanged()));
     setSyntaxHighlighter(new CppHighlighter);
+    onMimeTypeChanged();
+}
+
+bool CPPEditorDocument::isObjCEnabled() const
+{
+    return m_isObjCEnabled;
 }
 
 void CPPEditorDocument::applyFontSettings()
@@ -2006,6 +1915,13 @@ void CPPEditorDocument::invalidateFormatterCache()
 {
     CppTools::QtStyleCodeFormatter formatter;
     formatter.invalidateCache(document());
+}
+
+void CPPEditorDocument::onMimeTypeChanged()
+{
+    const QString &mt = mimeType();
+    m_isObjCEnabled = (mt == QLatin1String(CppTools::Constants::OBJECTIVE_C_SOURCE_MIMETYPE)
+                   || mt == QLatin1String(CppTools::Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE));
 }
 
 #include <cppeditor.moc>

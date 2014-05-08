@@ -55,11 +55,16 @@ TaskFileFactory::TaskFileFactory(QObject * parent) :
 Core::IDocument *TaskFileFactory::open(const QString &fileName)
 {
     ProjectExplorer::Project *project = ProjectExplorer::ProjectExplorerPlugin::currentProject();
-    return open(project ? project->projectDirectory() : QString(), fileName);
+    return open(project ? project->projectDirectory().toString() : QString(), fileName);
 }
 
 Core::IDocument *TaskFileFactory::open(const QString &base, const QString &fileName)
 {
+    foreach (TaskFile *doc, m_openFiles) {
+        if (doc->filePath() == fileName)
+            return doc;
+    }
+
     TaskFile *file = new TaskFile(this);
     file->setBaseDir(base);
 
@@ -80,7 +85,7 @@ Core::IDocument *TaskFileFactory::open(const QString &base, const QString &fileN
 
 void TaskFileFactory::closeAllFiles()
 {
-    foreach (Core::IDocument *document, m_openFiles)
+    foreach (TaskFile *document, m_openFiles)
         document->deleteLater();
     m_openFiles.clear();
 }

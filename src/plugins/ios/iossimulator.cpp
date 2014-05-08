@@ -33,20 +33,19 @@
 #include <projectexplorer/kitinformation.h>
 
 #include <QCoreApplication>
+#include <QProcess>
 
 using namespace ProjectExplorer;
 
 namespace Ios {
 namespace Internal {
 
-const char *SIMULATOR_PATH_KEY = "SIMULATOR_PATH";
-
-IosSimulator::IosSimulator(Core::Id id, Utils::FileName simulatorPath)
+IosSimulator::IosSimulator(Core::Id id)
     : IDevice(Core::Id(Constants::IOS_SIMULATOR_TYPE),
               IDevice::AutoDetected,
               IDevice::Emulator,
               id),
-      m_simulatorPath(simulatorPath)
+      m_lastPort(Constants::IOS_SIMULATOR_PORT_START)
 {
     setDisplayName(QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator"));
     setDeviceState(DeviceReadyToUse);
@@ -56,14 +55,15 @@ IosSimulator::IosSimulator()
     : IDevice(Core::Id(Constants::IOS_SIMULATOR_TYPE),
                              IDevice::AutoDetected,
                              IDevice::Emulator,
-                             Core::Id(Constants::IOS_SIMULATOR_DEVICE_ID))
+                             Core::Id(Constants::IOS_SIMULATOR_DEVICE_ID)),
+      m_lastPort(Constants::IOS_SIMULATOR_PORT_START)
 {
     setDisplayName(QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator"));
     setDeviceState(DeviceReadyToUse);
 }
 
 IosSimulator::IosSimulator(const IosSimulator &other)
-    : IDevice(other)
+    : IDevice(other), m_lastPort(other.m_lastPort)
 {
     setDisplayName(QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator"));
     setDeviceState(DeviceReadyToUse);
@@ -107,11 +107,6 @@ DeviceProcessSignalOperation::Ptr IosSimulator::signalOperation() const
     return DeviceProcessSignalOperation::Ptr();
 }
 
-Utils::FileName IosSimulator::simulatorPath() const
-{
-    return m_simulatorPath;
-}
-
 IDevice::Ptr IosSimulator::clone() const
 {
     return IDevice::Ptr(new IosSimulator(*this));
@@ -120,15 +115,41 @@ IDevice::Ptr IosSimulator::clone() const
 void IosSimulator::fromMap(const QVariantMap &map)
 {
     IDevice::fromMap(map);
-    m_simulatorPath = Utils::FileName::fromString(map.value(QLatin1String(SIMULATOR_PATH_KEY))
-                                                  .toString());
 }
 
 QVariantMap IosSimulator::toMap() const
 {
     QVariantMap res = IDevice::toMap();
-    res.insert(QLatin1String(SIMULATOR_PATH_KEY), simulatorPath().toString());
     return res;
+}
+
+quint16 IosSimulator::nextPort() const
+{
+    for (int i = 0; i < 100; ++i) {
+        // use qrand instead?
+        if (++m_lastPort >= Constants::IOS_SIMULATOR_PORT_END)
+            m_lastPort = Constants::IOS_SIMULATOR_PORT_START;
+        QProcess portVerifier;
+        // this is a bit too broad (it does not check just listening sockets, but also connections
+        // to that port from this computer)
+        portVerifier.start(QLatin1String("lsof"), QStringList() << QLatin1String("-n")
+                         << QLatin1String("-P") << QLatin1String("-i")
+                         << QString::fromLatin1(":%1").arg(m_lastPort));
+        if (!portVerifier.waitForStarted())
+            break;
+        portVerifier.closeWriteChannel();
+        if (!portVerifier.waitForFinished())
+            break;
+        if (portVerifier.exitStatus() != QProcess::NormalExit
+                || portVerifier.exitCode() != 0)
+            break;
+    }
+    return m_lastPort;
+}
+
+bool IosSimulator::canAutoDetectPorts() const
+{
+    return true;
 }
 
 IosSimulator::ConstPtr IosKitInformation::simulator(Kit *kit)

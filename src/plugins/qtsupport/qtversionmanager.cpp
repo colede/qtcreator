@@ -40,6 +40,8 @@
 
 #include <extensionsystem/pluginmanager.h>
 
+#include <projectexplorer/toolchainmanager.h>
+
 #include <utils/buildablehelperlibrary.h>
 #include <utils/filesystemwatcher.h>
 #include <utils/hostosinfo.h>
@@ -119,8 +121,8 @@ static QString findQMakeLine(const QString &makefile, const QString &key)
     return QString();
 }
 
-/// This function trims the "#Command /path/to/qmake" from the the line
-static QString trimLine(const QString line)
+/// This function trims the "#Command /path/to/qmake" from the line
+static QString trimLine(const QString &line)
 {
 
     // Actually the first space after #Command: /path/to/qmake
@@ -159,8 +161,11 @@ QtVersionManager::QtVersionManager()
     connect(m_fileWatcherTimer, SIGNAL(timeout()), SLOT(updateFromInstaller()));
 }
 
-void QtVersionManager::extensionsInitialized()
+void QtVersionManager::triggerQtVersionRestore()
 {
+    disconnect(ProjectExplorer::ToolChainManager::instance(), SIGNAL(toolChainsLoaded()),
+               this, SLOT(triggerQtVersionRestore()));
+
     bool success = restoreQtVersions();
     m_instance->updateFromInstaller(false);
     if (!success) {
@@ -202,7 +207,13 @@ QtVersionManager::~QtVersionManager()
     m_versions.clear();
 }
 
-QObject *QtVersionManager::instance()
+void QtVersionManager::initialized()
+{
+    connect(ProjectExplorer::ToolChainManager::instance(), SIGNAL(toolChainsLoaded()),
+            QtVersionManager::instance(), SLOT(triggerQtVersionRestore()));
+}
+
+QtVersionManager *QtVersionManager::instance()
 {
     return m_instance;
 }

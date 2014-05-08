@@ -34,7 +34,6 @@ def qdump__boost__bimaps__bimap(d, value):
     #rightType = d.templateArgument(value.type, 1)
     size = int(value["core"]["node_count"])
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         d.putPlainChildren(value)
 
@@ -93,6 +92,20 @@ def qdump__boost__shared_ptr(d, value):
             d.putSubItem("data", val)
             d.putIntItem("weakcount", weakcount)
             d.putIntItem("usecount", usecount)
+
+
+def qdump__boost__container__list(d, value):
+    r = value["members_"]["m_icont"]["data_"]["root_plus_size_"]
+    n = toInteger(r["size_"])
+    d.putItemCount(n)
+    if d.isExpanded():
+        innerType = d.templateArgument(value.type, 0)
+        offset = 2 * d.ptrSize()
+        with Children(d, n):
+            p = r["root_"]["next_"]
+            for i in xrange(n):
+                d.putSubItem("%s" % i, d.createValue(d.pointerValue(p) + offset, innerType))
+                p = p["next_"]
 
 
 def qdump__boost__gregorian__date(d, value):

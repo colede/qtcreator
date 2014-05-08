@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import QtcLibrary
 
 QtcLibrary {
@@ -11,7 +11,8 @@ QtcLibrary {
         cpp.dynamicLibraries: [
             "user32",
             "iphlpapi",
-            "ws2_32"
+            "ws2_32",
+            "shell32",
         ]
     }
     Properties {
@@ -99,6 +100,8 @@ QtcLibrary {
         "htmldocextractor.h",
         "ipaddresslineedit.cpp",
         "ipaddresslineedit.h",
+        "itemviews.cpp",
+        "itemviews.h",
         "iwelcomepage.cpp",
         "iwelcomepage.h",
         "json.cpp",
@@ -168,6 +171,8 @@ QtcLibrary {
         "tcpportsgatherer.h",
         "textfileformat.cpp",
         "textfileformat.h",
+        "treeviewcombobox.cpp",
+        "treeviewcombobox.h",
         "headerviewstretcher.cpp",
         "headerviewstretcher.h",
         "uncommentselection.cpp",
@@ -176,6 +181,8 @@ QtcLibrary {
         "unixutils.h",
         "utils.qrc",
         "utils_global.h",
+        "winutils.cpp",
+        "winutils.h",
         "wizard.cpp",
         "wizard.h",
         "images/arrow.png",
@@ -208,8 +215,6 @@ QtcLibrary {
         condition: qbs.targetOS.contains("windows")
         files: [
             "consoleprocess_win.cpp",
-            "winutils.cpp",
-            "winutils.h",
         ]
     }
 

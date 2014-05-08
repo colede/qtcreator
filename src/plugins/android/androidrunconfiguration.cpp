@@ -80,7 +80,7 @@ void AndroidRunConfiguration::init()
 
 bool AndroidRunConfiguration::fromMap(const QVariantMap &map)
 {
-    const QDir projectDir = QDir(target()->project()->projectDirectory());
+    const QDir projectDir = QDir(target()->project()->projectDirectory().toString());
     m_proFilePath = QDir::cleanPath(projectDir.filePath(map.value(QLatin1String(PRO_FILE_KEY)).toString()));
     m_parseSuccess = static_cast<QmakeProject *>(target()->project())->validParse(m_proFilePath);
     m_parseInProgress = static_cast<QmakeProject *>(target()->project())->parseInProgress(m_proFilePath);
@@ -90,7 +90,7 @@ bool AndroidRunConfiguration::fromMap(const QVariantMap &map)
 
 QVariantMap AndroidRunConfiguration::toMap() const
 {
-    const QDir projectDir = QDir(target()->project()->projectDirectory());
+    const QDir projectDir = QDir(target()->project()->projectDirectory().toString());
     QVariantMap map(RunConfiguration::toMap());
     map.insert(QLatin1String(PRO_FILE_KEY), projectDir.relativeFilePath(m_proFilePath));
     return map;
@@ -104,7 +104,7 @@ bool AndroidRunConfiguration::isEnabled() const
 QString AndroidRunConfiguration::disabledReason() const
 {
     if (m_parseInProgress)
-        return tr("The .pro file '%1' is currently being parsed.")
+        return tr("The .pro file \"%1\" is currently being parsed.")
                 .arg(QFileInfo(m_proFilePath).fileName());
 
     if (!m_parseSuccess)

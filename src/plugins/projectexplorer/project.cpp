@@ -38,6 +38,7 @@
 
 #include <coreplugin/idocument.h>
 #include <coreplugin/icontext.h>
+#include <coreplugin/icore.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/kitmanager.h>
 #include <limits>
@@ -91,7 +92,7 @@ public:
     Core::Context m_projectContext;
     Core::Context m_projectLanguages;
     QVariantMap m_pluginSettings;
-    SettingsAccessor *m_accessor;
+    Internal::UserFileAccessor *m_accessor;
 };
 
 ProjectPrivate::ProjectPrivate() :
@@ -119,9 +120,9 @@ Core::Id Project::id() const
     return d->m_id;
 }
 
-QString Project::projectFilePath() const
+Utils::FileName Project::projectFilePath() const
 {
-    return document()->filePath();
+    return Utils::FileName::fromString(document()->filePath());
 }
 
 bool Project::hasActiveBuildSettings() const
@@ -302,15 +303,15 @@ void Project::saveSettings()
 {
     emit aboutToSaveSettings();
     if (!d->m_accessor)
-        d->m_accessor = new SettingsAccessor(this);
-    d->m_accessor->saveSettings(toMap());
+        d->m_accessor = new Internal::UserFileAccessor(this);
+    d->m_accessor->saveSettings(toMap(), Core::ICore::mainWindow());
 }
 
 bool Project::restoreSettings()
 {
     if (!d->m_accessor)
-        d->m_accessor = new SettingsAccessor(this);
-    QVariantMap map(d->m_accessor->restoreSettings());
+        d->m_accessor = new Internal::UserFileAccessor(this);
+    QVariantMap map(d->m_accessor->restoreSettings(Core::ICore::mainWindow()));
     bool ok = fromMap(map);
     if (ok)
         emit settingsLoaded();
@@ -345,17 +346,16 @@ QVariantMap Project::toMap() const
     return map;
 }
 
-QString Project::projectDirectory() const
+Utils::FileName Project::projectDirectory() const
 {
-    return projectDirectory(document()->filePath());
+    return projectDirectory(projectFilePath());
 }
 
-QString Project::projectDirectory(const QString &top)
+Utils::FileName Project::projectDirectory(const Utils::FileName &top)
 {
     if (top.isEmpty())
-        return QString();
-    QFileInfo info(top);
-    return info.absoluteDir().path();
+        return Utils::FileName();
+    return Utils::FileName::fromString(top.toFileInfo().absoluteDir().path());
 }
 
 

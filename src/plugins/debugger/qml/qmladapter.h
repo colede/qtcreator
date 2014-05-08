@@ -69,29 +69,28 @@ public:
     QmlDebug::QDebugMessageClient *messageClient() const;
 
 public slots:
-    void logServiceStatusChange(const QString &service, float version,
-                                QmlDebug::ClientStatus newStatus);
+    void logServiceStateChange(const QString &service, float version,
+                               QmlDebug::QmlDebugClient::State newState);
     void logServiceActivity(const QString &service, const QString &logMessage);
 
 signals:
     void connected();
     void disconnected();
     void connectionStartupFailed();
-    void connectionError(QAbstractSocket::SocketError socketError);
+    void connectionError(QDebugSupport::Error error);
     void serviceConnectionError(const QString serviceName);
 
 private slots:
-    void connectionErrorOccurred(QAbstractSocket::SocketError socketError);
-    void clientStatusChanged(QmlDebug::ClientStatus status);
-    void debugClientStatusChanged(QmlDebug::ClientStatus status);
-    void connectionStateChanged();
+    void connectionErrorOccurred(QDebugSupport::Error socketError);
+    void clientStateChanged(QmlDebug::QmlDebugClient::State state);
+    void debugClientStateChanged(QmlDebug::QmlDebugClient::State state);
     void checkConnectionState();
+    void showConnectionStateMessage(const QString &message);
+    void showConnectionErrorMessage(const QString &message);
 
 private:
     bool isConnected() const;
     void createDebuggerClients();
-    void showConnectionStatusMessage(const QString &message);
-    void showConnectionErrorMessage(const QString &message);
 
 private:
     QPointer<DebuggerEngine> m_engine;

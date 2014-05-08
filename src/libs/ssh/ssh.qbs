@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import QtcLibrary
 
 QtcLibrary {
@@ -44,7 +44,7 @@ QtcLibrary {
         "sshsendfacility.cpp", "sshsendfacility_p.h",
     ].concat(botanFiles)
 
-    property var useSystemBotan: qbs.getenv("USE_SYSTEM_BOTAN") === "1"
+    property var useSystemBotan: qbs.getEnv("USE_SYSTEM_BOTAN") === "1"
     property var botanIncludes: {
         var result = ["../3rdparty"];
         if (useSystemBotan)
@@ -109,12 +109,13 @@ QtcLibrary {
     // For Botan.
     Properties {
         condition: qbs.toolchain.contains("mingw")
-        cpp.cxxFlags: [
+        cpp.cxxFlags: base.concat([
             "-fpermissive",
             "-finline-functions",
             "-Wno-long-long"
-        ]
+        ])
     }
+    cpp.cxxFlags: base
 
     Export {
         Depends { name: "Qt"; submodules: ["widgets", "network"] }

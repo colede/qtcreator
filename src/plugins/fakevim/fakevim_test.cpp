@@ -700,6 +700,19 @@ void FakeVimPlugin::test_vim_fFtT()
     KEYS("f .", "abc def" N "g" X " jkl");
     KEYS("u", "abc def" N "g" X "hi jkl");
     KEYS("rg$;", "abc def" N "gg" X "i jkl");
+
+    // repeat with ;
+    data.setText("int main() { return (x > 0) ? 0 : (x - 1); }");
+    KEYS("f(", "int main" X "() { return (x > 0) ? 0 : (x - 1); }");
+    KEYS(";", "int main() { return " X "(x > 0) ? 0 : (x - 1); }");
+    KEYS(";", "int main() { return (x > 0) ? 0 : " X "(x - 1); }");
+    KEYS(";", "int main() { return (x > 0) ? 0 : " X "(x - 1); }");
+    KEYS("02;", "int main() { return " X "(x > 0) ? 0 : (x - 1); }");
+    KEYS("2;", "int main() { return " X "(x > 0) ? 0 : (x - 1); }");
+    KEYS("0t(", "int mai" X "n() { return (x > 0) ? 0 : (x - 1); }");
+    KEYS(";", "int main() { return" X " (x > 0) ? 0 : (x - 1); }");
+    KEYS("3;", "int main() { return" X " (x > 0) ? 0 : (x - 1); }");
+    KEYS("2;", "int main() { return (x > 0) ? 0 :" X " (x - 1); }");
 }
 
 void FakeVimPlugin::test_vim_transform_numbers()
@@ -1325,6 +1338,15 @@ void FakeVimPlugin::test_vim_block_selection()
     KEYS("di\"", "\"" X "\"\"def\"");
     KEYS("u", "\"" X "abc\"\"def\"");
     KEYS("<c-r>", "\"" X "\"\"def\"");
+
+    /* QTCREATORBUG-12128 */
+    data.setText("abc \"def\" ghi \"jkl\" mno");
+    KEYS("di\"", "abc \"" X "\" ghi \"jkl\" mno");
+    KEYS("u", "abc \"" X "def\" ghi \"jkl\" mno");
+    KEYS("3l" "di\"", "abc \"" X "\" ghi \"jkl\" mno");
+    KEYS("di\"", "abc \"" X "\" ghi \"jkl\" mno");
+    KEYS("tj" "di\"", "abc \"\" ghi \"" X "\" mno");
+    KEYS("l" "di\"", "abc \"\" ghi \"\"" X " mno");
 
     NOT_IMPLEMENTED
     // quoted string with escaped character

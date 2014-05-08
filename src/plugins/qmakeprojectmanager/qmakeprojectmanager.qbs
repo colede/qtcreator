@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -16,6 +16,7 @@ QtcPlugin {
     Depends { name: "CppTools" }
     Depends { name: "TextEditor" }
     Depends { name: "QmlJSTools" }
+    Depends { name: "ResourceEditor" }
 
     pluginRecommends: [
         "Designer"

@@ -128,8 +128,7 @@ SymbolGroupValue SymbolGroupValue::operator[](unsigned index) const
     if (isValid() && SymbolGroupValue::verbose) {
         DebugPrint dp;
         dp << name() << "::operator[](#" << index << ") failed. ";
-        if (m_node)
-            formatNodeError(m_node, dp);
+        formatNodeError(m_node, dp);
     }
     return SymbolGroupValue(m_errorMessage);
 }
@@ -178,8 +177,7 @@ SymbolGroupValue SymbolGroupValue::operator[](const char *name) const
     if (isValid() && SymbolGroupValue::verbose) { // Do not report subsequent errors
         DebugPrint dp;
         dp << this->name() << "::operator[](\"" << name << "\") failed. ";
-        if (m_node)
-            formatNodeError(m_node, dp);
+        formatNodeError(m_node, dp);
     }
     return SymbolGroupValue(m_errorMessage);
 }
@@ -747,7 +745,7 @@ std::string QtInfo::moduleName(Module m) const
 {
     // Must match the enumeration
     static const char* modNames[] =
-        {"Core", "Gui", "Widgets", "Network", "Script" };
+        {"Core", "Gui", "Widgets", "Network", "Script", "Qml" };
     std::ostringstream result;
     result << "Qt";
     if (version >= 5)
@@ -1793,7 +1791,7 @@ static bool dumpQStringFromQPrivateClass(const SymbolGroupValue &v,
             v.node()->symbolGroup()->addSymbol(v.module(), symbolName, std::string(), &errorMessage);
     if (!stringNode && errorMessage.find("DEBUG_ANY_ID") != std::string::npos) {
         // HACK:
-        // In some rare cases the the AddSymbol can't create a node with a given module name,
+        // In some rare cases the AddSymbol can't create a node with a given module name,
         // but is able to add the symbol without any modulename.
         dumpType = QtInfo::get(v.context()).prependModuleAndNameSpace("QString", "", QtInfo::get(v.context()).nameSpace);
         symbolName = SymbolGroupValue::pointedToSymbolName(stringAddress , dumpType);
@@ -2557,7 +2555,7 @@ static bool dumpQVariant(const SymbolGroupValue &v, std::wostream &str, void **s
         if (const SymbolGroupValue sv = dataV.typeCast(qtInfo.prependQtCoreModule("QString *").c_str())) {
             if (!dumpQString(sv, str)) {
                 // HACK:
-                // In some rare cases the the AddSymbol can't create a node with a given module name,
+                // In some rare cases the AddSymbol can't create a node with a given module name,
                 // but is able to add the symbol without any modulename.
                 if (const SymbolGroupValue svc = dataV.typeCast("QString *"))
                     dumpQString(svc, str);
@@ -3084,7 +3082,7 @@ static int assignQStringI(SymbolGroupNode  *n, const char *className,
                 << v.address() << ',' << data.stringLength << ')';
         std::wstring wOutput;
         std::string errorMessage;
-        return ExtensionContext::instance().call(callStr.str(), &wOutput, &errorMessage) ?
+        return ExtensionContext::instance().call(callStr.str(), 0, &wOutput, &errorMessage) ?
             assignQStringI(n, className, data, ctx, false) : 5;
     }
     // Write data.

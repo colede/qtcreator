@@ -100,7 +100,7 @@ DebuggerSettings::DebuggerSettings()
 
     item = new SavedAction(this);
     insertItem(SettingsDialog, item);
-    item->setText(tr("Debugger Properties..."));
+    item->setText(tr("Configure Debugger..."));
 
     //
     // View
@@ -175,6 +175,13 @@ DebuggerSettings::DebuggerSettings()
     item->setCheckable(true);
     item->setDefaultValue(false);
     insertItem(UseAlternatingRowColors, item);
+
+    item = new SavedAction(this);
+    item->setText(tr("Keep Editor Stationary When Stepping"));
+    item->setSettingsKey(debugModeGroup, QLatin1String("StationaryEditorWhileStepping"));
+    item->setCheckable(true);
+    item->setDefaultValue(false);
+    insertItem(StationaryEditorWhileStepping, item);
 
     item = new SavedAction(this);
     item->setText(tr("Debugger Font Size Follows Main Editor"));

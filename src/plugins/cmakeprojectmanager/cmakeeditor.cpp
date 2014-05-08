@@ -72,11 +72,6 @@ Core::IEditor *CMakeEditor::duplicate()
     return ret->editor();
 }
 
-Core::Id CMakeEditor::id() const
-{
-    return Core::Id(CMakeProjectManager::Constants::CMAKE_EDITOR_ID);
-}
-
 TextEditor::CompletionAssistProvider *CMakeEditor::completionAssistProvider()
 {
     return ExtensionSystem::PluginManager::getObject<CMakeFileCompletionAssistProvider>();
@@ -231,6 +226,7 @@ CMakeEditorWidget::Link CMakeEditorWidget::findLinkAt(const QTextCursor &cursor,
 CMakeDocument::CMakeDocument()
     : TextEditor::BaseTextDocument()
 {
+    setId(CMakeProjectManager::Constants::CMAKE_EDITOR_ID);
     setMimeType(QLatin1String(CMakeProjectManager::Constants::CMAKEMIMETYPE));
     setSyntaxHighlighter(new CMakeHighlighter);
 }

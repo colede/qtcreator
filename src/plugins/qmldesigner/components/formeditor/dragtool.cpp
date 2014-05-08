@@ -38,7 +38,6 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QDebug>
 #include <QMimeData>
-#include <QMessageBox>
 #include <QTimer>
 
 namespace QmlDesigner {
@@ -191,8 +190,11 @@ FormEditorItem* DragTool::calculateContainer(const QPointF &point, FormEditorIte
     QList<QGraphicsItem *> list = scene()->items(point);
     foreach (QGraphicsItem *item, list) {
          FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
-         if (formEditorItem && formEditorItem != currentItem && formEditorItem->isContainer()
-             && !isAncestorOf(currentItem, formEditorItem))
+         if (formEditorItem
+                 && formEditorItem != currentItem
+                 && formEditorItem->isContainer()
+                 && !formEditorItem->qmlItemNode().modelNode().metaInfo().isLayoutable()
+                 && !isAncestorOf(currentItem, formEditorItem))
              return formEditorItem;
     }
 
@@ -200,24 +202,6 @@ FormEditorItem* DragTool::calculateContainer(const QPointF &point, FormEditorIte
         return scene()->rootFormEditorItem();
     return 0;
 }
-
- QList<Import> DragTool::missingImportList(const ItemLibraryEntry &itemLibraryEntry)
-{
-    QList<Import> importToBeAddedList;
-
-    if (!itemLibraryEntry.requiredImport().isEmpty()) {
-        const QString newImportUrl = itemLibraryEntry.requiredImport();
-        const QString newImportVersion = QString("%1.%2").arg(QString::number(itemLibraryEntry.majorVersion()), QString::number(itemLibraryEntry.minorVersion()));
-        Import newImport = Import::createLibraryImport(newImportUrl, newImportVersion);
-
-        if (itemLibraryEntry.majorVersion() == -1 && itemLibraryEntry.minorVersion() == -1)
-            newImport = Import::createFileImport(newImportUrl, QString());
-        else
-            newImport = Import::createLibraryImport(newImportUrl, newImportVersion);
-    }
-    return importToBeAddedList;
-}
-
 
 void DragTool::formEditorItemsChanged(const QList<FormEditorItem*> & itemList)
 {
@@ -272,7 +256,7 @@ void DragTool::commitTransaction()
     try {
         m_rewriterTransaction.commit();
     } catch (RewritingException &e) {
-        QMessageBox::warning(0, "Error", e.description());
+        e.showException();
     }
 }
 
@@ -315,12 +299,7 @@ void DragTool::dragEnterEvent(QGraphicsSceneDragDropEvent * event)
             view()->widgetInfo().widget->setFocus();
             m_Aborted = false;
             Q_ASSERT(!event->mimeData()->data("application/vnd.bauhaus.itemlibraryinfo").isEmpty());
-
-            importToBeAddedList = missingImportList(
-                        itemLibraryEntryFromData(event->mimeData()->data("application/vnd.bauhaus.itemlibraryinfo")));
         }
-
-        view()->model()->changeImports(importToBeAddedList, QList<Import>());
 
         if (!m_rewriterTransaction.isValid()) {
             view()->clearSelectedModelNodes();

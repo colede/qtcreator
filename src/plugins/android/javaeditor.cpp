@@ -64,11 +64,6 @@ Core::IEditor *JavaEditor::duplicate()
     return ret->editor();
 }
 
-Core::Id JavaEditor::id() const
-{
-    return Core::Id(Constants::JAVA_EDITOR_ID);
-}
-
 TextEditor::CompletionAssistProvider *JavaEditor::completionAssistProvider()
 {
     return ExtensionSystem::PluginManager::getObject<JavaCompletionAssistProvider>();
@@ -116,6 +111,7 @@ TextEditor::BaseTextEditor *JavaEditorWidget::createEditor()
 JavaDocument::JavaDocument()
         : TextEditor::BaseTextDocument()
 {
+    setId(Constants::JAVA_EDITOR_ID);
     setMimeType(QLatin1String(Constants::JAVA_MIMETYPE));
     setSyntaxHighlighter(TextEditor::createGenericSyntaxHighlighter(Core::MimeDatabase::findByType(QLatin1String(Constants::JAVA_MIMETYPE))));
     setIndenter(new JavaIndenter);

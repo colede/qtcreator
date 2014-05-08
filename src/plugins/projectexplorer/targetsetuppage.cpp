@@ -165,8 +165,8 @@ TargetSetupPage::TargetSetupPage(QWidget *parent) :
     QList<IPotentialKit *> potentialKits =
             ExtensionSystem::PluginManager::instance()->getObjects<IPotentialKit>();
     foreach (IPotentialKit *pk, potentialKits)
-        if (QWidget *w = pk->createWidget(this))
-            m_potentialWidgets.append(w);
+        if (pk->isEnabled())
+            m_potentialWidgets.append(pk->createWidget(this));
 
     setUseScrollArea(true);
 
@@ -458,6 +458,7 @@ void TargetSetupPage::import(const Utils::FileName &path, bool silent)
 
         widget->addBuildInfo(info, true);
         widget->setKitSelected(true);
+        widget->expandWidget();
     }
     emit completeChanged();
 }

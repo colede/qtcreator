@@ -124,6 +124,7 @@ public:
     virtual void reloadRegisters();
     virtual void reloadSourceFiles();
     virtual void reloadFullStack();
+    void loadAdditionalQmlStack();
 
     static QString extensionLibraryName(bool is64Bit);
 
@@ -241,6 +242,7 @@ private:
     void handleWidgetAt(const CdbExtensionCommandPtr &);
     void handleBreakPoints(const CdbExtensionCommandPtr &);
     void handleBreakPoints(const GdbMi &value);
+    void handleAdditionalQmlStack(const CdbExtensionCommandPtr &);
     NormalizedSourceFileName sourceMapNormalizeFileNameFromDebugger(const QString &f);
     void updateLocalVariable(const QByteArray &iname);
     void updateLocals(bool forNewStackFrame = false);
@@ -271,7 +273,6 @@ private:
     bool m_verboseLog;
     bool m_notifyEngineShutdownOnTermination;
     bool m_hasDebuggee;
-    bool m_cdbIs64Bit;
     enum Wow64State {
         wow64Uninitialized,
         noWow64Stack,

@@ -164,7 +164,7 @@ public:
 private slots:
     void handleNewRows(const QModelIndex &index, int first, int last);
     void handleRowsAboutToBeRemoved(const QModelIndex &index, int first, int last);
-    void handleDataChanged(QModelIndex,QModelIndex bottom);
+    void handleDataChanged(const QModelIndex &top, const QModelIndex &bottom);
     void handleReset();
 
 private:
@@ -179,7 +179,6 @@ private:
     QList<Core::Id> m_categoryIds;
 
     mutable QList<int> m_mapping;
-    mutable bool m_mappingUpToDate;
 
     TaskModel *m_sourceModel;
 };

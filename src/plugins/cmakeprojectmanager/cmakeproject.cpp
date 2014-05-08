@@ -143,7 +143,7 @@ void CMakeProject::changeActiveBuildConfiguration(ProjectExplorer::BuildConfigur
 
     if (mode != CMakeOpenProjectWizard::Nothing) {
         CMakeBuildInfo info(cmakebc);
-        CMakeOpenProjectWizard copw(m_manager, mode, &info);
+        CMakeOpenProjectWizard copw(Core::ICore::mainWindow(), m_manager, mode, &info);
         if (copw.exec() == QDialog::Accepted)
             cmakebc->setUseNinja(copw.useNinja()); // NeedToCreate can change the Ninja setting
     }
@@ -184,7 +184,7 @@ QString CMakeProject::shadowBuildDirectory(const QString &projectFilePath, const
 
     const QString projectName = QFileInfo(info.absolutePath()).fileName();
     ProjectExplorer::ProjectMacroExpander expander(projectFilePath, projectName, k, bcName);
-    QDir projectDir = QDir(projectDirectory(projectFilePath));
+    QDir projectDir = QDir(projectDirectory(Utils::FileName::fromString(projectFilePath)).toString());
     QString buildPath = Utils::expandMacros(Core::DocumentManager::buildDirectory(), &expander);
     return QDir::cleanPath(projectDir.absoluteFilePath(buildPath));
 }
@@ -239,7 +239,7 @@ bool CMakeProject::parseCMakeLists()
             projectFiles.insert(node->path());
     } else {
         // Manually add the CMakeLists.txt file
-        QString cmakeListTxt = projectDirectory() + QLatin1String("/CMakeLists.txt");
+        QString cmakeListTxt = projectDirectory().toString() + QLatin1String("/CMakeLists.txt");
         bool generated = false;
         fileList.append(new ProjectExplorer::FileNode(cmakeListTxt, ProjectExplorer::ProjectFileType, generated));
         projectFiles.insert(cmakeListTxt);
@@ -340,21 +340,36 @@ bool CMakeProject::parseCMakeLists()
         CppTools::ProjectPart::Ptr part(new CppTools::ProjectPart);
         part->project = this;
         part->displayName = displayName();
-        part->projectFile = projectFilePath();
-
-        part->evaluateToolchain(tc,
-                                cxxflags,
-                                cxxflags,
-                                SysRootKitInformation::sysRoot(k));
+        part->projectFile = projectFilePath().toString();
 
         // This explicitly adds -I. to the include paths
-        part->includePaths += projectDirectory();
-        part->includePaths += cbpparser.includeFiles();
+        part->includePaths += projectDirectory().toString();
+
+        foreach (const QString &includeFile, cbpparser.includeFiles()) {
+            // CodeBlocks is utterly ignorant of frameworks on Mac, and won't report framework
+            // paths. The work-around is to check if the include path ends in ".framework", and
+            // if so, add the parent directory as framework path.
+            if (includeFile.endsWith(QLatin1String(".framework"))) {
+                const int slashIdx = includeFile.lastIndexOf(QLatin1Char('/'));
+                if (slashIdx != -1) {
+                    part->frameworkPaths += includeFile.left(slashIdx);
+                    continue;
+                }
+            }
+
+            part->includePaths += includeFile;
+        }
+
         part->projectDefines += cbpparser.defines();
 
         CppTools::ProjectFileAdder adder(part->files);
         foreach (const QString &file, m_files)
             adder.maybeAdd(file);
+
+        part->evaluateToolchain(tc,
+                                cxxflags,
+                                cxxflags,
+                                SysRootKitInformation::sysRoot(k));
 
         pinfo.appendProjectPart(part);
         m_codeModelFuture.cancel();
@@ -516,7 +531,7 @@ bool CMakeProject::fromMap(const QVariantMap &map)
 
     bool hasUserFile = activeTarget();
     if (!hasUserFile) {
-        CMakeOpenProjectWizard copw(m_manager, projectDirectory(), Utils::Environment::systemEnvironment());
+        CMakeOpenProjectWizard copw(Core::ICore::mainWindow(), m_manager, projectDirectory().toString(), Utils::Environment::systemEnvironment());
         if (copw.exec() != QDialog::Accepted)
             return false;
         Kit *k = copw.kit();
@@ -559,7 +574,7 @@ bool CMakeProject::fromMap(const QVariantMap &map)
 
         if (mode != CMakeOpenProjectWizard::Nothing) {
             CMakeBuildInfo info(activeBC);
-            CMakeOpenProjectWizard copw(m_manager, mode, &info);
+            CMakeOpenProjectWizard copw(Core::ICore::mainWindow(), m_manager, mode, &info);
             if (copw.exec() != QDialog::Accepted)
                 return false;
             else
@@ -599,7 +614,7 @@ CMakeBuildTarget CMakeProject::buildTargetForTitle(const QString &title)
 QString CMakeProject::uiHeaderFile(const QString &uiFile)
 {
     QFileInfo fi(uiFile);
-    Utils::FileName project = Utils::FileName::fromString(projectDirectory());
+    Utils::FileName project = projectDirectory();
     Utils::FileName baseDirectory = Utils::FileName::fromString(fi.absolutePath());
 
     while (baseDirectory.isChildOf(project)) {
@@ -695,7 +710,7 @@ void CMakeProject::updateApplicationAndDeploymentTargets()
     QString deploymentPrefix;
     QDir sourceDir;
 
-    sourceDir.setPath(t->project()->projectDirectory());
+    sourceDir.setPath(t->project()->projectDirectory().toString());
     deploymentFile.setFileName(sourceDir.filePath(QLatin1String("QtCreatorDeployment.txt")));
     if (deploymentFile.open(QFile::ReadOnly | QFile::Text)) {
         deploymentStream.setDevice(&deploymentFile);
@@ -748,6 +763,7 @@ void CMakeProject::createUiCodeModelSupport()
 CMakeFile::CMakeFile(CMakeProject *parent, QString fileName)
     : Core::IDocument(parent), m_project(parent)
 {
+    setId("Cmake.ProjectFile");
     setFilePath(fileName);
 }
 
@@ -809,7 +825,7 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     fl->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     setLayout(fl);
 
-    QPushButton *runCmakeButton = new QPushButton(tr("Run cmake"));
+    QPushButton *runCmakeButton = new QPushButton(tr("Run cmake..."));
     connect(runCmakeButton, SIGNAL(clicked()),
             this, SLOT(runCMake()));
     fl->addRow(tr("Reconfigure project:"), runCmakeButton);
@@ -829,7 +845,7 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
 
     m_buildConfiguration = bc;
     m_pathLineEdit->setText(m_buildConfiguration->rawBuildDirectory().toString());
-    if (m_buildConfiguration->buildDirectory().toString() == bc->target()->project()->projectDirectory())
+    if (m_buildConfiguration->buildDirectory() == bc->target()->project()->projectDirectory())
         m_changeButton->setEnabled(false);
     else
         m_changeButton->setEnabled(true);
@@ -841,7 +857,8 @@ void CMakeBuildSettingsWidget::openChangeBuildDirectoryDialog()
 {
     CMakeProject *project = static_cast<CMakeProject *>(m_buildConfiguration->target()->project());
     CMakeBuildInfo info(m_buildConfiguration);
-    CMakeOpenProjectWizard copw(project->projectManager(), CMakeOpenProjectWizard::ChangeDirectory,
+    CMakeOpenProjectWizard copw(Core::ICore::mainWindow(),
+                                project->projectManager(), CMakeOpenProjectWizard::ChangeDirectory,
                                 &info);
     if (copw.exec() == QDialog::Accepted) {
         project->changeBuildDirectory(m_buildConfiguration, copw.buildDirectory());
@@ -856,7 +873,8 @@ void CMakeBuildSettingsWidget::runCMake()
         return;
     CMakeProject *project = static_cast<CMakeProject *>(m_buildConfiguration->target()->project());
     CMakeBuildInfo info(m_buildConfiguration);
-    CMakeOpenProjectWizard copw(project->projectManager(),
+    CMakeOpenProjectWizard copw(Core::ICore::mainWindow(),
+                                project->projectManager(),
                                 CMakeOpenProjectWizard::WantToUpdate, &info);
     if (copw.exec() == QDialog::Accepted)
         project->parseCMakeLists();

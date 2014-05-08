@@ -35,7 +35,6 @@
 #include <QAbstractItemModel>
 
 QT_BEGIN_NAMESPACE
-class QTreeWidgetItem;
 class QBoxLayout;
 QT_END_NAMESPACE
 
@@ -87,7 +86,7 @@ public:
     void markForRemoval(Kit *k);
     Kit *markForAddition(Kit *baseKit);
 
-    QString findNameFor(Kit *k, const QString baseName);
+    QString findNameFor(Kit *k, const QString &baseName);
 
 signals:
     void kitStateChanged();

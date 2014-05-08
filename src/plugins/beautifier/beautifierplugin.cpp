@@ -100,8 +100,8 @@ bool BeautifierPlugin::initialize(const QStringList &arguments, QString *errorSt
 void BeautifierPlugin::extensionsInitialized()
 {
     if (const Core::EditorManager *editorManager = Core::EditorManager::instance()) {
-        connect(editorManager, SIGNAL(currentEditorChanged(Core::IEditor *)),
-                this, SLOT(updateActions(Core::IEditor *)));
+        connect(editorManager, SIGNAL(currentEditorChanged(Core::IEditor*)),
+                this, SLOT(updateActions(Core::IEditor*)));
     }
 }
 
@@ -127,7 +127,7 @@ QString BeautifierPlugin::format(const QString &text, QStringList command, const
     sourceFile.setAutoRemove(true);
     sourceFile.write(text.toUtf8());
     if (!sourceFile.finalize()) {
-        showError(tr("Couldn't create temporary file %1: %2.")
+        showError(tr("Cannot create temporary file \"%1\": %2.")
                   .arg(sourceFile.fileName()).arg(sourceFile.errorString()));
         return QString();
     }
@@ -138,7 +138,7 @@ QString BeautifierPlugin::format(const QString &text, QStringList command, const
     const QString processProgram = command.takeFirst();
     process.start(processProgram, command);
     if (!process.waitForFinished()) {
-        showError(tr("Failed to call %1 or an error occurred.").arg(processProgram));
+        showError(tr("Cannot call %1 or some other error occurred.").arg(processProgram));
         return QString();
     }
     const QByteArray output = process.readAllStandardError();
@@ -148,7 +148,7 @@ QString BeautifierPlugin::format(const QString &text, QStringList command, const
     // Read text back
     Utils::FileReader reader;
     if (!reader.fetch(sourceFile.fileName(), QIODevice::Text)) {
-        showError(tr("Couldn't read file %1: %2.")
+        showError(tr("Cannot read file \"%1\": %2.")
                   .arg(sourceFile.fileName()).arg(reader.errorString()));
         return QString();
     }
@@ -288,7 +288,30 @@ void BeautifierPlugin::formatCurrentFile(QStringList command)
 
 void BeautifierPlugin::showError(const QString &error)
 {
-    Core::MessageManager::write(tr("ERROR in Beautifier: %1").arg(error.trimmed()));
+    Core::MessageManager::write(tr("Error in Beautifier: %1").arg(error.trimmed()));
+}
+
+QString BeautifierPlugin::msgCannotGetConfigurationFile(const QString &command)
+{
+    return tr("Cannot get configuration file for %1.").arg(command);
+}
+
+QString BeautifierPlugin::msgFormatCurrentFile()
+{
+    //: Menu entry
+    return tr("Format Current File");
+}
+
+QString BeautifierPlugin::msgFormatSelectedText()
+{
+    //: Menu entry
+    return tr("Format Selected Text");
+}
+
+QString BeautifierPlugin::msgCommandPromptDialogTitle(const QString &command)
+{
+    //: File dialog title for path chooser when choosing binary
+    return tr("%1 Command").arg(command);
 }
 
 } // namespace Internal

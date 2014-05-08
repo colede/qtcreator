@@ -30,7 +30,6 @@
 #ifndef QMLPROFILEREVENTVIEW_H
 #define QMLPROFILEREVENTVIEW_H
 
-#include <QTreeView>
 #include <QStandardItemModel>
 #include <qmldebug/qmlprofilereventtypes.h>
 #include "qmlprofilermodelmanager.h"
@@ -78,6 +77,11 @@ public:
     void setShowExtendedStatistics(bool show);
     bool showExtendedStatistics() const;
 
+    void setShowJavaScript(bool show);
+    bool showJavaScript() const;
+
+    void setShowQml(bool show);
+    bool showQml() const;
 
 signals:
     void gotoSourceLocation(const QString &fileName, int lineNumber, int columnNumber);
@@ -139,6 +143,7 @@ private slots:
     void profilerDataModelStateChanged();
 
 private:
+    void selectItem(const QStandardItem *item);
     void setHeaderLabels();
     void parseModelProxy();
 

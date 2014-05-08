@@ -65,6 +65,7 @@ class CppRefactoringFile;
 }
 
 namespace TextEditor { class FontSettings; }
+namespace Utils { class TreeViewComboBox; }
 
 namespace CppEditor {
 namespace Internal {
@@ -77,11 +78,17 @@ class CPPEditorDocument : public TextEditor::BaseTextDocument
 public:
     CPPEditorDocument();
 
+    bool isObjCEnabled() const;
+
 protected:
     void applyFontSettings();
 
 private slots:
     void invalidateFormatterCache();
+    void onMimeTypeChanged();
+
+private:
+    bool m_isObjCEnabled;
 };
 
 class CPPEditor : public TextEditor::BaseTextEditor
@@ -92,7 +99,6 @@ public:
 
     bool duplicateSupported() const { return true; }
     Core::IEditor *duplicate();
-    Core::Id id() const;
 
     bool open(QString *errorString, const QString &fileName, const QString &realFileName);
 
@@ -113,6 +119,9 @@ public:
     CPPEditorWidget(QWidget *parent = 0);
     CPPEditorWidget(CPPEditorWidget *other);
     ~CPPEditorWidget();
+
+    CPPEditorDocument *cppEditorDocument() const;
+
     void unCommentSelection();
 
     unsigned editorRevision() const;
@@ -125,9 +134,6 @@ public:
     virtual void paste(); // reimplemented from BaseTextEditorWidget
     virtual void cut(); // reimplemented from BaseTextEditorWidget
     virtual void selectAll(); // reimplemented from BaseTextEditorWidget
-
-    void setObjCEnabled(bool onoff);
-    bool isObjCEnabled() const;
 
     bool openLink(const Link &link, bool inNextSplit) { return openCppEditorAt(link, inNextSplit); }
 
@@ -171,7 +177,7 @@ protected slots:
     void slotCodeStyleSettingsChanged(const QVariant &);
 
 private slots:
-    void jumpToOutlineElement(int index);
+    void jumpToOutlineElement();
     void updateOutlineNow();
     void updateOutlineIndex();
     void updateOutlineIndexNow();
@@ -182,7 +188,6 @@ private slots:
     void updateFunctionDeclDefLinkNow();
     void onFunctionDeclDefLinkFound(QSharedPointer<FunctionDeclDefLink> link);
     void onFilePathChanged();
-    void onMimeTypeChanged();
     void onDocumentUpdated();
     void onContentsChanged(int position, int charsRemoved, int charsAdded);
     void updatePreprocessorButtonTooltip();
@@ -230,7 +235,8 @@ private:
 
     QPointer<CppTools::CppModelManagerInterface> m_modelManager;
 
-    QComboBox *m_outlineCombo;
+    CPPEditorDocument *m_cppEditorDocument;
+    Utils::TreeViewComboBox *m_outlineCombo;
     CPlusPlus::OverviewModel *m_outlineModel;
     QModelIndex m_outlineModelIndex;
     QSortFilterProxyModel *m_proxyModel;
@@ -250,7 +256,6 @@ private:
 
     CppTools::SemanticInfo m_lastSemanticInfo;
     QList<TextEditor::QuickFixOperation::Ptr> m_quickFixes;
-    bool m_objcEnabled;
 
     QScopedPointer<QFutureWatcher<TextEditor::HighlightingResult> > m_highlightWatcher;
     unsigned m_highlightRevision; // the editor revision that requested the highlight

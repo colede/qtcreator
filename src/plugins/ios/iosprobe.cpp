@@ -106,6 +106,7 @@ void IosProbe::detectDeveloperPaths()
         qDebug() << QString::fromLatin1("Could not detect selected xcode with /usr/bin/xcode-select");
     } else {
         QString path = QString::fromLocal8Bit(selectedXcode.readAllStandardOutput());
+        path.chop(1);
         addDeveloperPath(path);
     }
     addDeveloperPath(QLatin1String("/Applications/Xcode.app/Contents/Developer"));
@@ -114,7 +115,7 @@ void IosProbe::detectDeveloperPaths()
 void IosProbe::setupDefaultToolchains(const QString &devPath, const QString &xcodeName)
 {
     if (debugProbe)
-        qDebug() << QString::fromLatin1("Setting up platform '%1'.").arg(xcodeName);
+        qDebug() << QString::fromLatin1("Setting up platform \"%1\".").arg(xcodeName);
     QString indent = QLatin1String("  ");
 
     // detect clang (default toolchain)
@@ -176,7 +177,6 @@ void IosProbe::setupDefaultToolchains(const QString &devPath, const QString &xco
                     qDebug() << indent << QString::fromLatin1("Expected arm architecture, not %1").arg(arch);
                 extraFlags << QLatin1String("-arch") << arch;
             } else if (name == QLatin1String("iphonesimulator")) {
-                QString arch = defaultProp.value(QLatin1String("ARCHS")).toString();
                 // don't generate a toolchain for 64 bit (to fix when we support that)
                 extraFlags << QLatin1String("-arch") << QLatin1String("i386");
             }
@@ -251,8 +251,6 @@ void IosProbe::setupDefaultToolchains(const QString &devPath, const QString &xco
                                         .arg(currentSdkName.toString());
                         continue;
                     }
-                    QString safeName = currentSdkName.toString().replace(QLatin1Char('-'), QLatin1Char('_'))
-                            .replace(QRegExp(QLatin1String("[^-a-zA-Z0-9]")), QLatin1String("-"));
                     if (sdkName.isEmpty()) {
                         if (compareVersions(maxVersion, versionStr) > 0) {
                             maxVersion = versionStr;

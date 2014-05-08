@@ -99,7 +99,7 @@ bool FileUtils::removeRecursively(const FileName &filePath, QString *error)
         }
         if (!QDir::root().rmdir(dir.path())) {
             if (error) {
-                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to remove directory '%1'.")
+                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to remove directory \"%1\".")
                         .arg(filePath.toUserOutput());
             }
             return false;
@@ -107,7 +107,7 @@ bool FileUtils::removeRecursively(const FileName &filePath, QString *error)
     } else {
         if (!QFile::remove(filePath.toString())) {
             if (error) {
-                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to remove file '%1'.")
+                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to remove file \"%1\".")
                         .arg(filePath.toUserOutput());
             }
             return false;
@@ -142,7 +142,7 @@ bool FileUtils::copyRecursively(const FileName &srcFilePath, const FileName &tgt
         targetDir.cdUp();
         if (!targetDir.mkdir(tgtFilePath.toFileInfo().fileName())) {
             if (error) {
-                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to create directory '%1'.")
+                *error = QCoreApplication::translate("Utils::FileUtils", "Failed to create directory \"%1\".")
                         .arg(tgtFilePath.toUserOutput());
             }
             return false;
@@ -161,7 +161,7 @@ bool FileUtils::copyRecursively(const FileName &srcFilePath, const FileName &tgt
     } else {
         if (!QFile::copy(srcFilePath.toString(), tgtFilePath.toString())) {
             if (error) {
-                *error = QCoreApplication::translate("Utils::FileUtils", "Could not copy file '%1' to '%2'.")
+                *error = QCoreApplication::translate("Utils::FileUtils", "Could not copy file \"%1\" to \"%2\".")
                         .arg(srcFilePath.toUserOutput(), tgtFilePath.toUserOutput());
             }
             return false;
@@ -288,6 +288,32 @@ QString FileUtils::normalizePathName(const QString &name)
     return name;
 #endif
 }
+
+bool FileUtils::isRelativePath(const QString &path)
+{
+    if (path.startsWith(QLatin1Char('/')))
+        return false;
+    if (HostOsInfo::isWindowsHost()) {
+        if (path.startsWith(QLatin1Char('\\')))
+            return false;
+        // Unlike QFileInfo, this won't accept a relative path with a drive letter.
+        // Such paths result in a royal mess anyway ...
+        if (path.length() >= 3 && path.at(1) == QLatin1Char(':') && path.at(0).isLetter()
+                && (path.at(2) == QLatin1Char('/') || path.at(2) == QLatin1Char('\\')))
+            return false;
+    }
+    return true;
+}
+
+QString FileUtils::resolvePath(const QString &baseDir, const QString &fileName)
+{
+    if (fileName.isEmpty())
+        return QString();
+    if (isAbsolutePath(fileName))
+        return QDir::cleanPath(fileName);
+    return QDir::cleanPath(baseDir + QLatin1Char('/') + fileName);
+}
+
 
 QByteArray FileReader::fetchQrc(const QString &fileName)
 {
@@ -514,7 +540,7 @@ QString FileName::toUserOutput() const
 
 /// Find the parent directory of a given directory.
 
-/// Returns an empty FileName if the current dirctory is already
+/// Returns an empty FileName if the current directory is already
 /// a root level directory.
 
 /// \returns \a FileName with the last segment removed.

@@ -44,6 +44,10 @@ def qdump__Debugger__Internal__GdbMi(d, value):
     d.putValue(str, Hex2EncodedLatin1)
     d.putPlainChildren(value)
 
+def qdump__Debugger__Internal__DisassemblerLine(d, value):
+    d.putByteArrayValue(value["m_data"])
+    d.putPlainChildren(value)
+
 def qdump__Debugger__Internal__WatchData(d, value):
     d.putByteArrayValue(value["iname"])
     d.putPlainChildren(value)
@@ -74,7 +78,7 @@ def qdump__CPlusPlus__IntegerType(d, value):
     d.putPlainChildren(value)
 
 def qdump__CPlusPlus__NamedType(d, value):
-    literal = downcast(value["_name"])
+    literal = d.downcast(value["_name"])
     d.putValue(d.encodeCharArray(literal["_chars"]), Hex2EncodedLatin1)
     d.putPlainChildren(value)
 

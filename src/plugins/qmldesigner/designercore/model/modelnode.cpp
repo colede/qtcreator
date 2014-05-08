@@ -140,7 +140,7 @@ QString ModelNode::id() const
 QString ModelNode::validId()
 {
     if (id().isEmpty())
-        setId(view()->generateNewId(QString::fromUtf8(simplifiedTypeName())));
+        setIdWithRefactoring(view()->generateNewId(QString::fromUtf8(simplifiedTypeName())));
 
     return id();
 }
@@ -164,7 +164,26 @@ bool ModelNode::isValidId(const QString &id)
     return id.isEmpty() || (!idContainsWrongLetter(id) && !idIsQmlKeyWord(id));
 }
 
-void ModelNode::setId(const QString& id)
+bool ModelNode::hasId() const
+{
+    if (!isValid())
+        throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
+
+    return m_internalNode->hasId();
+}
+
+void ModelNode::setIdWithRefactoring(const QString& id)
+{
+    if (model()->rewriterView()
+            && !id.isEmpty()
+            && !m_internalNode->id().isEmpty()) { // refactor the id if they are not empty
+        model()->rewriterView()->renameId(m_internalNode->id(), id);
+    } else {
+        setIdWithoutRefactoring(id);
+    }
+}
+
+void ModelNode::setIdWithoutRefactoring(const QString &id)
 {
     Internal::WriteLocker locker(m_model.data());
     if (!isValid()) {
@@ -175,7 +194,7 @@ void ModelNode::setId(const QString& id)
     if (!isValidId(id))
         throw InvalidIdException(__LINE__, __FUNCTION__, __FILE__, id, InvalidIdException::InvalidCharacters);
 
-    if (id == ModelNode::id())
+    if (id == m_internalNode->id())
         return;
 
     if (view()->hasId(id))
@@ -572,8 +591,8 @@ void ModelNode::removeProperty(const PropertyName &name)
 
 static QList<ModelNode> descendantNodes(const ModelNode &parent)
 {
-    QList<ModelNode> descendants(parent.allDirectSubModelNodes());
-    foreach (const ModelNode &child, parent.allDirectSubModelNodes()) {
+    QList<ModelNode> descendants(parent.directSubModelNodes());
+    foreach (const ModelNode &child, parent.directSubModelNodes()) {
         descendants += descendantNodes(child);
     }
     return descendants;
@@ -617,7 +636,7 @@ void ModelNode::destroy()
 
 
 /*!
-  \brief Returns if the the two nodes reference the same entity in the same model
+  \brief Returns if the two nodes reference the same entity in the same model
   */
 bool operator ==(const ModelNode &firstNode, const ModelNode &secondNode)
 {
@@ -630,7 +649,7 @@ bool operator ==(const ModelNode &firstNode, const ModelNode &secondNode)
 }
 
 /*!
-  \brief Returns if the the two nodes do not reference the same entity in the same model
+  \brief Returns if the two nodes do not reference the same entity in the same model
   */
 bool operator !=(const ModelNode &firstNode, const ModelNode &secondNode)
 {
@@ -694,7 +713,7 @@ The list contains every ModelNode that belongs to one of this ModelNodes
 properties.
 \return a list of all ModelNodes that are direct children
 */
-const QList<ModelNode> ModelNode::allDirectSubModelNodes() const
+const QList<ModelNode> ModelNode::directSubModelNodes() const
 {
     return toModelNodeList(internalNode()->allDirectSubNodes(), view());
 }
@@ -710,6 +729,15 @@ All children in this list will be implicitly removed if this ModelNode is destro
 const QList<ModelNode> ModelNode::allSubModelNodes() const
 {
     return toModelNodeList(internalNode()->allSubNodes(), view());
+}
+
+const QList<ModelNode> ModelNode::allSubModelNodesAndThisNode() const
+{
+    QList<ModelNode> modelNodeList;
+    modelNodeList.append(*this);
+    modelNodeList.append(allSubModelNodes());
+
+    return modelNodeList;
 }
 
 /*!
@@ -909,6 +937,12 @@ void ModelNode::setAuxiliaryData(const PropertyName &name, const QVariant &data)
 {
     Internal::WriteLocker locker(m_model.data());
     m_model.data()->d->setAuxiliaryData(internalNode(), name, data);
+}
+
+void ModelNode::removeAuxiliaryData(const PropertyName &name)
+{
+    Internal::WriteLocker locker(m_model.data());
+    m_model.data()->d->removeAuxiliaryData(internalNode(), name);
 }
 
 bool ModelNode::hasAuxiliaryData(const PropertyName &name) const

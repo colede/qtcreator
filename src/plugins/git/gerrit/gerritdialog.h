@@ -48,6 +48,8 @@ class QDialogButtonBox;
 class QTextBrowser;
 QT_END_NAMESPACE
 
+namespace Utils { class TreeView; }
+
 namespace Gerrit {
 namespace Internal {
 class GerritParameters;
@@ -80,6 +82,7 @@ public:
                           QWidget *parent = 0);
     ~GerritDialog();
     QString repositoryPath() const;
+    void setCurrentPath(const QString &path);
 
 signals:
     void fetchDisplay(const QSharedPointer<Gerrit::Internal::GerritChange> &);
@@ -90,18 +93,14 @@ public slots:
     void fetchStarted(const QSharedPointer<Gerrit::Internal::GerritChange> &change);
     void fetchFinished();
 
-protected:
-    void showEvent(QShowEvent *event);
-
 private slots:
     void slotCurrentChanged();
-    void slotDoubleClicked(const QModelIndex &);
+    void slotActivated(const QModelIndex &);
     void slotRefreshStateChanged(bool);
     void slotFetchDisplay();
     void slotFetchCherryPick();
     void slotFetchCheckout();
     void slotRefresh();
-    void displayRepositoryPath();
 
 private:
     const QStandardItem *itemAt(const QModelIndex &i, int column = 0) const;
@@ -114,7 +113,7 @@ private:
     QSortFilterProxyModel *m_filterModel;
     GerritModel *m_model;
     QStringListModel *m_queryModel;
-    QTreeView *m_treeView;
+    Utils::TreeView *m_treeView;
     QTextBrowser *m_detailsBrowser;
     QueryValidatingLineEdit *m_queryLineEdit;
     Utils::FancyLineEdit *m_filterLineEdit;

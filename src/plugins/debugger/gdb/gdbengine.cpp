@@ -970,7 +970,7 @@ void GdbEngine::flushCommand(const GdbCommand &cmd0)
         QByteArray buffer = m_scheduledTestResponses.value(token);
         buffer.replace("@TOKEN@", QByteArray::number(token));
         m_scheduledTestResponses.remove(token);
-        showMessage(_("FAKING TEST RESPONSE (TOKEN: %2, RESPONSE: '%3')")
+        showMessage(_("FAKING TEST RESPONSE (TOKEN: %2, RESPONSE: %3)")
             .arg(token).arg(_(buffer)));
         QMetaObject::invokeMethod(this, "handleResponse",
             Q_ARG(QByteArray, buffer));
@@ -1763,6 +1763,13 @@ void GdbEngine::handlePythonSetup(const GdbResponse &response)
         showMessage(_("ENGINE SUCCESSFULLY STARTED"));
         notifyEngineSetupOk();
     } else {
+        QByteArray msg = response.data["msg"].data();
+        if (msg.contains("Python scripting is not supported in this copy of GDB.")) {
+            QString out1 = _("The selected build of GDB does not support Python scripting.");
+            QString out2 = _("It cannot be used in Qt Creator.");
+            showStatusMessage(out1 + QLatin1Char(' ') + out2);
+            showMessageBox(QMessageBox::Critical, tr("Execution Error"), out1 + _("<br>") + out2);
+        }
         notifyEngineSetupFailed();
     }
 }
@@ -1991,7 +1998,7 @@ int GdbEngine::currentFrame() const
 
 static QString msgNoGdbBinaryForToolChain(const Abi &tc)
 {
-    return GdbEngine::tr("There is no GDB binary available for binaries in format '%1'")
+    return GdbEngine::tr("There is no GDB binary available for binaries in format \"%1\"")
         .arg(tc.toString());
 }
 
@@ -2020,7 +2027,8 @@ bool GdbEngine::hasCapability(unsigned cap) const
         | OperateByInstructionCapability
         | RunToLineCapability
         | WatchComplexExpressionsCapability
-        | MemoryAddressCapability))
+        | MemoryAddressCapability
+        | AdditionalQmlStackCapability))
         return true;
 
     if (startParameters().startMode == AttachCore)
@@ -2562,7 +2570,7 @@ void GdbEngine::handleBreakInsert1(const GdbResponse &response)
     const BreakpointModelId id = response.cookie.value<BreakpointModelId>();
     if (handler->state(id) == BreakpointRemoveRequested) {
         if (response.resultClass == GdbResultDone) {
-            // This delete was defered. Act now.
+            // This delete was deferred. Act now.
             const GdbMi mainbkpt = response.data["bkpt"];
             handler->notifyBreakpointRemoveProceeding(id);
             QByteArray nr = mainbkpt["number"].data();
@@ -3207,6 +3215,90 @@ void GdbEngine::reloadFullStack()
         QVariant::fromValue<StackCookie>(StackCookie(true, true)));
 }
 
+void GdbEngine::loadAdditionalQmlStack()
+{
+    // Scan for QV4::ExecutionContext parameter in the parameter list of a V4 call.
+    postCommand("-stack-list-arguments --simple-values", NeedsStop, CB(handleQmlStackFrameArguments));
+}
+
+// Scan the arguments of a stack list for the address of a QV4::ExecutionContext.
+static quint64 findJsExecutionContextAddress(const GdbMi &stackArgsResponse, const QByteArray &qtNamespace)
+{
+    const GdbMi frameList = stackArgsResponse.childAt(0);
+    if (!frameList.childCount())
+        return 0;
+    QByteArray jsExecutionContextType = qtNamespace;
+    if (!jsExecutionContextType.isEmpty())
+        jsExecutionContextType.append("::");
+    jsExecutionContextType.append("QV4::ExecutionContext *");
+    foreach (const GdbMi &frameNode, frameList.children()) {
+        foreach (const GdbMi &argNode, frameNode["args"].children()) {
+            if (argNode["type"].data() == jsExecutionContextType) {
+                bool ok;
+                const quint64 address = argNode["value"].data().toULongLong(&ok, 16);
+                if (ok && address)
+                    return address;
+            }
+        }
+    }
+    return 0;
+}
+
+static QString msgCannotLoadQmlStack(const QString &why)
+{
+    return _("Unable to load QML stack: ") + why;
+}
+
+void GdbEngine::handleQmlStackFrameArguments(const GdbResponse &response)
+{
+    if (!response.data.isValid()) {
+        showMessage(msgCannotLoadQmlStack(_("No stack obtained.")), LogError);
+        return;
+    }
+    const quint64 contextAddress = findJsExecutionContextAddress(response.data, qtNamespace());
+    if (!contextAddress) {
+        showMessage(msgCannotLoadQmlStack(_("The address of the JS execution context could not be found.")), LogError);
+        return;
+    }
+    // Call the debug function of QML with the context address to obtain the QML stack trace.
+    QByteArray command = "-data-evaluate-expression \"qt_v4StackTrace((QV4::ExecutionContext *)0x";
+    command += QByteArray::number(contextAddress, 16);
+    command += ")\"";
+    postCommand(command, CB(handleQmlStackTrace));
+}
+
+void GdbEngine::handleQmlStackTrace(const GdbResponse &response)
+{
+    if (!response.data.isValid()) {
+        showMessage(msgCannotLoadQmlStack(_("No result obtained.")), LogError);
+        return;
+    }
+    // Prepend QML stack frames to existing C++ stack frames.
+    QByteArray stackData = response.data["value"].data();
+    const int index = stackData.indexOf("stack=");
+    if (index == -1) {
+        showMessage(msgCannotLoadQmlStack(_("Malformed result.")), LogError);
+        return;
+    }
+    stackData.remove(0, index);
+    stackData.replace("\\\"", "\"");
+    GdbMi stackMi;
+    stackMi.fromString(stackData);
+    const int qmlFrameCount = stackMi.childCount();
+    if (!qmlFrameCount) {
+        showMessage(msgCannotLoadQmlStack(_("No stack frames obtained.")), LogError);
+        return;
+    }
+    QList<StackFrame> qmlFrames;
+    qmlFrames.reserve(qmlFrameCount);
+    for (int i = 0; i < qmlFrameCount; ++i) {
+        StackFrame frame = parseStackFrame(stackMi.childAt(i), i);
+        frame.fixQmlFrame(startParameters());
+        qmlFrames.append(frame);
+    }
+    stackHandler()->prependFrames(qmlFrames);
+}
+
 void GdbEngine::reloadStack(bool forceGotoLocation)
 {
     PENDING_DEBUG("RELOAD STACK");
@@ -3233,6 +3325,8 @@ StackFrame GdbEngine::parseStackFrame(const GdbMi &frameMi, int level)
     frame.line = frameMi["line"].toInt();
     frame.address = frameMi["addr"].toAddress();
     frame.usable = QFileInfo(frame.file).isReadable();
+    if (frameMi["language"].data() == "js")
+        frame.language = QmlLanguage;
     return frame;
 }
 
@@ -3308,6 +3402,10 @@ void GdbEngine::activateFrame(int frameIndex)
 
     QTC_ASSERT(frameIndex < handler->stackSize(), return);
 
+    if (handler->frameAt(frameIndex).language == QmlLanguage) {
+        gotoLocation(handler->frameAt(frameIndex));
+        return;
+    }
     // Assuming the command always succeeds this saves a roundtrip.
     // Otherwise the lines below would need to get triggered
     // after a response to this -stack-select-frame here.
@@ -3870,73 +3968,18 @@ public:
 
 void GdbEngine::fetchDisassembler(DisassemblerAgent *agent)
 {
-    // As of 7.2 the MI output is often less informative then the CLI version.
-    // So globally fall back to CLI.
-    if (agent->isMixed())
-        fetchDisassemblerByCliPointMixed(agent);
-    else
-        fetchDisassemblerByCliPointPlain(agent);
-#if 0
-    if (agent->isMixed())
-        fetchDisassemblerByMiRangeMixed(agent)
-    else
-        fetchDisassemblerByMiRangePlain(agent);
-#endif
+    // Doing that unconditionally seems to be the most robust
+    // solution given the richest output. Looks like GDB is
+    // a command line tool after all...
+    fetchDisassemblerByCliPointMixed(agent);
 }
-
-#if 0
-void GdbEngine::fetchDisassemblerByMiRangePlain(const DisassemblerAgentCookie &ac0)
-{
-    // Disassemble full function:
-    const StackFrame &frame = agent->frame();
-    DisassemblerAgentCookie ac = ac0;
-    QTC_ASSERT(ac.agent, return);
-    const quint64 address = ac.agent->address();
-    QByteArray cmd = "-data-disassemble"
-        " -f " + frame.file.toLocal8Bit() +
-        " -l " + QByteArray::number(frame.line) + " -n -1 -- 1";
-    postCommand(cmd, Discardable, CB(handleFetchDisassemblerByMiPointMixed),
-        QVariant::fromValue(DisassemblerAgentCookie(agent)));
-}
-#endif
-
-#if 0
-void GdbEngine::fetchDisassemblerByMiRangeMixed(const DisassemblerAgentCookie &ac0)
-{
-    DisassemblerAgentCookie ac = ac0;
-    QTC_ASSERT(ac.agent, return);
-    const quint64 address = ac.agent->address();
-    QByteArray start = QByteArray::number(address - 20, 16);
-    QByteArray end = QByteArray::number(address + 100, 16);
-    // -data-disassemble [ -s start-addr -e end-addr ]
-    //  | [ -f filename -l linenum [ -n lines ] ] -- mode
-    postCommand("-data-disassemble -s 0x" + start + " -e 0x" + end + " -- 1",
-        Discardable, CB(handleFetchDisassemblerByMiRangeMixed),
-        QVariant::fromValue(ac));
-}
-#endif
-
-#if 0
-void GdbEngine::fetchDisassemblerByMiRangePlain(const DisassemblerAgentCookie &ac0)
-{
-    DisassemblerAgentCookie ac = ac0;
-    QTC_ASSERT(ac.agent, return);
-    const quint64 address = ac.agent->address();
-    QByteArray start = QByteArray::number(address - 20, 16);
-    QByteArray end = QByteArray::number(address + 100, 16);
-    // -data-disassemble [ -s start-addr -e end-addr ]
-    //  | [ -f filename -l linenum [ -n lines ] ] -- mode
-    postCommand("-data-disassemble -s 0x" + start + " -e 0x" + end + " -- 0",
-        Discardable, CB(handleFetchDisassemblerByMiRangePlain),
-        QVariant::fromValue(ac));
-}
-#endif
 
 static inline QByteArray disassemblerCommand(const Location &location, bool mixed)
 {
-    QByteArray command = "disassemble ";
+    QByteArray command = "disassemble /r";
     if (mixed)
-        command += "/m ";
+        command += 'm';
+    command += ' ';
     if (const quint64 address = location.address()) {
         command += "0x";
         command += QByteArray::number(address, 16);
@@ -3957,19 +4000,6 @@ void GdbEngine::fetchDisassemblerByCliPointMixed(const DisassemblerAgentCookie &
         QVariant::fromValue(ac));
 }
 
-void GdbEngine::fetchDisassemblerByCliPointPlain(const DisassemblerAgentCookie &ac0)
-{
-    // This here
-    //    DisassemblerAgentCookie ac = ac0;
-    //    QTC_ASSERT(ac.agent, return);
-    //    postCommand(disassemblerCommand(ac.agent->location(), false), Discardable,
-    //        CB(handleFetchDisassemblerByCliPointPlain),
-    //        QVariant::fromValue(ac));
-    // takes far too long if function boundaries are not hit.
-    // Skip this feature and immediately fall back to the 'range' version:
-    fetchDisassemblerByCliRangePlain(ac0);
-}
-
 void GdbEngine::fetchDisassemblerByCliRangeMixed(const DisassemblerAgentCookie &ac0)
 {
     DisassemblerAgentCookie ac = ac0;
@@ -3977,10 +4007,11 @@ void GdbEngine::fetchDisassemblerByCliRangeMixed(const DisassemblerAgentCookie &
     const quint64 address = ac.agent->address();
     QByteArray start = QByteArray::number(address - 20, 16);
     QByteArray end = QByteArray::number(address + 100, 16);
-    QByteArray cmd = "disassemble /m 0x" + start + ",0x" + end;
+    QByteArray cmd = "disassemble /rm 0x" + start + ",0x" + end;
     postCommand(cmd, Discardable|ConsoleCommand,
         CB(handleFetchDisassemblerByCliRangeMixed), QVariant::fromValue(ac));
 }
+
 
 void GdbEngine::fetchDisassemblerByCliRangePlain(const DisassemblerAgentCookie &ac0)
 {
@@ -3989,77 +4020,62 @@ void GdbEngine::fetchDisassemblerByCliRangePlain(const DisassemblerAgentCookie &
     const quint64 address = ac.agent->address();
     QByteArray start = QByteArray::number(address - 20, 16);
     QByteArray end = QByteArray::number(address + 100, 16);
-    QByteArray cmd = "disassemble 0x" + start + ",0x" + end;
+    QByteArray cmd = "disassemble /r 0x" + start + ",0x" + end;
     postCommand(cmd, Discardable,
         CB(handleFetchDisassemblerByCliRangePlain), QVariant::fromValue(ac));
 }
 
-static DisassemblerLine parseLine(const GdbMi &line)
+struct LineData
 {
-    DisassemblerLine dl;
-    QByteArray address = line["address"].data();
-    dl.address = address.toULongLong(0, 0);
-    dl.data = _(line["inst"].data());
-    dl.function = _(line["func-name"].data());
-    dl.offset = line["offset"].data().toUInt();
-    return dl;
-}
+    LineData() {}
+    LineData(int i, int f) : index(i), function(f) {}
+    int index;
+    int function;
+};
 
-DisassemblerLines GdbEngine::parseMiDisassembler(const GdbMi &lines)
-{
-    // ^done,data={asm_insns=[src_and_asm_line={line="1243",file=".../app.cpp",
-    // line_asm_insn=[{address="0x08054857",func-name="main",offset="27",
-    // inst="call 0x80545b0 <_Z13testQFileInfov>"}]},
-    // src_and_asm_line={line="1244",file=".../app.cpp",
-    // line_asm_insn=[{address="0x0805485c",func-name="main",offset="32",
-    //inst="call 0x804cba1 <_Z11testObject1v>"}]}]}
-    // - or - (non-Mac)
-    // ^done,asm_insns=[
-    // {address="0x0805acf8",func-name="...",offset="25",inst="and $0xe8,%al"},
-    // {address="0x0805acfa",func-name="...",offset="27",inst="pop %esp"}, ..]
-    // - or - (MAC)
-    // ^done,asm_insns={
-    // {address="0x0d8f69e0",func-name="...",offset="1952",inst="add $0x0,%al"},..}
-
-    DisassemblerLines result;
-
-    // FIXME: Performance?
-    foreach (const GdbMi &child, lines.children()) {
-        if (child.hasName("src_and_asm_line")) {
-            const QString fileName = QFile::decodeName(child["file"].data());
-            const uint line = child["line"].data().toUInt();
-            result.appendSourceLine(fileName, line);
-            GdbMi insn = child["line_asm_insn"];
-            foreach (const GdbMi &item, insn.children())
-                result.appendLine(parseLine(item));
-        } else {
-            // The non-mixed version.
-            result.appendLine(parseLine(child));
-        }
-    }
-    return result;
-}
-
-DisassemblerLines GdbEngine::parseCliDisassembler(const QByteArray &output)
+bool GdbEngine::handleCliDisassemblerResult(const QByteArray &output, DisassemblerAgent *agent)
 {
     // First line is something like
     // "Dump of assembler code from 0xb7ff598f to 0xb7ff5a07:"
     DisassemblerLines dlines;
     foreach (const QByteArray &line, output.split('\n'))
         dlines.appendUnparsed(_(line));
-    return dlines;
-}
 
-DisassemblerLines GdbEngine::parseDisassembler(const GdbResponse &response)
-{
-    // Apple's gdb produces MI output even for CLI commands.
-    // FIXME: Check whether wrapping this into -interpreter-exec console
-    // (i.e. usgind the 'ConsoleCommand' GdbCommandFlag makes a
-    // difference.
-    GdbMi lines = response.data["asm_insns"];
-    if (lines.isValid())
-        return parseMiDisassembler(lines);
-    return parseCliDisassembler(response.consoleStreamOutput);
+    QVector<DisassemblerLine> lines = dlines.data();
+
+    typedef QMap<quint64, LineData> LineMap;
+    LineMap lineMap;
+    int currentFunction = -1;
+    for (int i = 0, n = lines.size(); i != n; ++i) {
+        const DisassemblerLine &line = lines.at(i);
+        if (line.address)
+            lineMap.insert(line.address, LineData(i, currentFunction));
+        else
+            currentFunction = i;
+    }
+
+    currentFunction = -1;
+    DisassemblerLines result;
+    result.setBytesLength(dlines.bytesLength());
+    for (LineMap::const_iterator it = lineMap.begin(), et = lineMap.end(); it != et; ++it) {
+        LineData d = *it;
+        if (d.function != currentFunction) {
+            if (d.function != -1) {
+                DisassemblerLine &line = lines[d.function];
+                ++line.hunk;
+                result.appendLine(line);
+                currentFunction = d.function;
+            }
+        }
+        result.appendLine(lines.at(d.index));
+    }
+
+    if (result.coversAddress(agent->address())) {
+        agent->setContents(result);
+        return true;
+    }
+
+    return false;
 }
 
 void GdbEngine::reloadDisassembly()
@@ -4073,35 +4089,13 @@ void GdbEngine::handleFetchDisassemblerByCliPointMixed(const GdbResponse &respon
     DisassemblerAgentCookie ac = response.cookie.value<DisassemblerAgentCookie>();
     QTC_ASSERT(ac.agent, return);
 
-    if (response.resultClass == GdbResultDone) {
-        DisassemblerLines dlines = parseDisassembler(response);
-        if (dlines.coversAddress(ac.agent->address())) {
-            ac.agent->setContents(dlines);
+    if (response.resultClass == GdbResultDone)
+        if (handleCliDisassemblerResult(response.consoleStreamOutput, ac.agent))
             return;
-        }
-    }
-    fetchDisassemblerByCliPointPlain(ac);
-}
 
-void GdbEngine::handleFetchDisassemblerByCliPointPlain(const GdbResponse &response)
-{
-    DisassemblerAgentCookie ac = response.cookie.value<DisassemblerAgentCookie>();
-    QTC_ASSERT(ac.agent, return);
-    // Agent address is 0 when disassembling a function name only
-    const quint64 agentAddress = ac.agent->address();
-    if (response.resultClass == GdbResultDone) {
-        DisassemblerLines dlines = parseDisassembler(response);
-        if (!agentAddress || dlines.coversAddress(agentAddress)) {
-            ac.agent->setContents(dlines);
-            return;
-        }
-    }
-    if (agentAddress) {
-        if (ac.agent->isMixed())
-            fetchDisassemblerByCliRangeMixed(ac);
-        else
-            fetchDisassemblerByCliRangePlain(ac);
-    }
+    // 'point, plain' can take far too long.
+    // Skip this feature and immediately fall back to the 'range' version:
+    fetchDisassemblerByCliRangeMixed(ac);
 }
 
 void GdbEngine::handleFetchDisassemblerByCliRangeMixed(const GdbResponse &response)
@@ -4109,13 +4103,10 @@ void GdbEngine::handleFetchDisassemblerByCliRangeMixed(const GdbResponse &respon
     DisassemblerAgentCookie ac = response.cookie.value<DisassemblerAgentCookie>();
     QTC_ASSERT(ac.agent, return);
 
-    if (response.resultClass == GdbResultDone) {
-        DisassemblerLines dlines = parseDisassembler(response);
-        if (dlines.coversAddress(ac.agent->address())) {
-            ac.agent->setContents(dlines);
+    if (response.resultClass == GdbResultDone)
+        if (handleCliDisassemblerResult(response.consoleStreamOutput, ac.agent))
             return;
-        }
-    }
+
     fetchDisassemblerByCliRangePlain(ac);
 }
 
@@ -4124,13 +4115,9 @@ void GdbEngine::handleFetchDisassemblerByCliRangePlain(const GdbResponse &respon
     DisassemblerAgentCookie ac = response.cookie.value<DisassemblerAgentCookie>();
     QTC_ASSERT(ac.agent, return);
 
-    if (response.resultClass == GdbResultDone) {
-        DisassemblerLines dlines = parseDisassembler(response);
-        if (dlines.size()) {
-            ac.agent->setContents(dlines);
+    if (response.resultClass == GdbResultDone)
+        if (handleCliDisassemblerResult(response.consoleStreamOutput, ac.agent))
             return;
-        }
-    }
 
     // Finally, give up.
     //76^error,msg="No function contains program counter for selected..."
@@ -4368,7 +4355,7 @@ void GdbEngine::loadInitScript()
         } else {
             showMessageBox(QMessageBox::Warning,
             tr("Cannot find debugger initialization script"),
-            tr("The debugger settings point to a script file at '%1' "
+            tr("The debugger settings point to a script file at \"%1\" "
                "which is not accessible. If a script file is not needed, "
                "consider clearing that entry to avoid this warning. "
               ).arg(script));
@@ -4517,56 +4504,6 @@ void GdbEngine::handleInferiorPrepared()
 void GdbEngine::finishInferiorSetup()
 {
     QTC_ASSERT(state() == InferiorSetupRequested, qDebug() << state());
-    // Extract Qt namespace.
-    QString fileName;
-    {
-        QTemporaryFile symbols(QDir::tempPath() + _("/gdb_ns_"));
-        symbols.open();
-        fileName = symbols.fileName();
-    }
-    postCommand("maint print msymbols \"" + fileName.toLocal8Bit() + '"',
-        CB(handleNamespaceExtraction), fileName);
-}
-
-void GdbEngine::handleDebugInfoLocation(const GdbResponse &response)
-{
-    if (response.resultClass == GdbResultDone) {
-        const QByteArray debugInfoLocation = startParameters().debugInfoLocation.toLocal8Bit();
-        if (QFile::exists(QString::fromLocal8Bit(debugInfoLocation))) {
-            const QByteArray curDebugInfoLocations = response.consoleStreamOutput.split('"').value(1);
-            if (curDebugInfoLocations.isEmpty()) {
-                postCommand("set debug-file-directory " + debugInfoLocation);
-            } else {
-                postCommand("set debug-file-directory " + debugInfoLocation
-                        + HostOsInfo::pathListSeparator().toLatin1()
-                        + curDebugInfoLocations);
-            }
-        }
-    }
-}
-
-void GdbEngine::handleNamespaceExtraction(const GdbResponse &response)
-{
-    QFile file(response.cookie.toString());
-    file.open(QIODevice::ReadOnly);
-    QByteArray ba = file.readAll();
-    file.close();
-    file.remove();
-    QByteArray ns;
-    int pos = ba.indexOf("7QString16fromAscii_helper");
-    if (pos > -1) {
-        int pos1 = pos - 1;
-        while (pos1 > 0 && ba.at(pos1) != 'N' && ba.at(pos1) > '@')
-            --pos1;
-        ++pos1;
-        ns = ba.mid(pos1, pos - pos1);
-    }
-    if (ns.isEmpty()) {
-        showMessage(_("FOUND NON-NAMESPACED QT"));
-    } else {
-        showMessage(_("FOUND NAMESPACED QT: " + ns));
-        setQtNamespace(ns + "::");
-    }
 
     if (startParameters().startMode == AttachCore) {
         notifyInferiorSetupOk(); // No breakpoints in core files.
@@ -4584,6 +4521,23 @@ void GdbEngine::handleNamespaceExtraction(const GdbResponse &response)
                         CB(handleBreakOnQFatal), QVariant(true));
         } else {
             notifyInferiorSetupOk();
+        }
+    }
+}
+
+void GdbEngine::handleDebugInfoLocation(const GdbResponse &response)
+{
+    if (response.resultClass == GdbResultDone) {
+        const QByteArray debugInfoLocation = startParameters().debugInfoLocation.toLocal8Bit();
+        if (QFile::exists(QString::fromLocal8Bit(debugInfoLocation))) {
+            const QByteArray curDebugInfoLocations = response.consoleStreamOutput.split('"').value(1);
+            if (curDebugInfoLocations.isEmpty()) {
+                postCommand("set debug-file-directory " + debugInfoLocation);
+            } else {
+                postCommand("set debug-file-directory " + debugInfoLocation
+                        + HostOsInfo::pathListSeparator().toLatin1()
+                        + curDebugInfoLocations);
+            }
         }
     }
 }
@@ -4738,7 +4692,7 @@ void GdbEngine::scheduleTestResponse(int testCase, const QByteArray &response)
         return;
 
     int token = currentToken() + 1;
-    showMessage(_("SCHEDULING TEST RESPONSE (CASE: %1, TOKEN: %2, RESPONSE: '%3')")
+    showMessage(_("SCHEDULING TEST RESPONSE (CASE: %1, TOKEN: %2, RESPONSE: %3)")
         .arg(testCase).arg(token).arg(_(response)));
     m_scheduledTestResponses[token] = response;
 }
@@ -4982,6 +4936,12 @@ void GdbEngine::handleStackFramePython(const GdbResponse &response)
         GdbMi all;
         all.fromStringMultiple(out);
         GdbMi data = all["data"];
+
+        GdbMi ns = all["qtnamespace"];
+        if (ns.isValid()) {
+            setQtNamespace(ns.data());
+            showMessage(_("FOUND NAMESPACED QT: " + ns.data()));
+        }
 
         WatchHandler *handler = watchHandler();
         QList<WatchData> list;

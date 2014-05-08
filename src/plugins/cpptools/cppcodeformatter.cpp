@@ -169,6 +169,7 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
             switch (kind) {
             case T_LESS:        enter(template_param); break;
             case T_GREATER:     leave(); break;
+            case T_GREATER_GREATER: leave(); leave(); break; // call leave twice to pop both template_param states
             } break;
 
         case operator_declaration:
@@ -179,12 +180,16 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
 
         case declaration_start:
             switch (kind) {
+            case T_CLASS:
+            case T_STRUCT:      turnInto(class_start); continue;
+            case T_ENUM:        turnInto(enum_start); continue;
             case T_RBRACE:      leave(true); continue;
             case T_SEMICOLON:   leave(true); break;
             case T_EQUAL:       enter(assign_open_or_initializer); break;
             case T_LBRACE:      enter(defun_open); break;
             case T_COLON:       enter(member_init_open); enter(member_init_expected); break;
             case T_OPERATOR:    enter(operator_declaration); break;
+            case T_GREATER_GREATER: break;
             default:            tryExpression(true); break;
             } break;
 
@@ -228,7 +233,7 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
             switch (kind) {
             case T_RBRACKET:    turnInto(lambda_declarator_expected); break; // we can't determine exact kind of expression. Try again
             case T_COMMA:
-            case T_EQUAL:       turnInto(lambda_instroducer); break;              // ',' or '=' inside brackets can be only whithin lambda capture list
+            case T_EQUAL:       turnInto(lambda_instroducer); break;              // ',' or '=' inside brackets can be only within lambda capture list
             case T_IDENTIFIER:          // '&', id, 'this' are allowed both in the capture list and subscribtion
             case T_AMPER:
             case T_THIS:        break;
@@ -559,6 +564,13 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
         case cpp_macro_cont:
             break;
 
+        case string_open:
+            if (!m_currentToken.isStringLiteral()) {
+                leave();
+                continue;
+            }
+            break;
+
         default:
             qWarning() << "Unhandled state" << m_currentState.top().type;
             break;
@@ -813,6 +825,9 @@ bool CodeFormatter::tryExpression(bool alsoExpression)
         newState = lambda_instroducer_or_subscribtion;
         break;
     }
+
+    if (m_currentToken.isStringLiteral())
+        newState = string_open;
 
     if (newState != -1) {
         if (alsoExpression)
@@ -1419,6 +1434,11 @@ void QtStyleCodeFormatter::onEnter(int newState, int *indentDepth, int *savedInd
     case cpp_macro:
     case cpp_macro_cont:
         *indentDepth = m_tabSettings.m_indentSize;
+        break;
+
+    case string_open:
+        *indentDepth = tokenPosition;
+        *paddingDepth = 0;
         break;
     }
 

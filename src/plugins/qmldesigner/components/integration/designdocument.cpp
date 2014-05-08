@@ -43,6 +43,8 @@
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
+#include <projectexplorer/session.h>
+#include <projectexplorer/kit.h>
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtsupportconstants.h>
 #include <qtsupport/qtversionmanager.h>
@@ -51,7 +53,6 @@
 #include <QUrl>
 #include <QDebug>
 
-#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QApplication>
 
@@ -74,7 +75,7 @@ DesignDocument::DesignDocument(QObject *parent) :
         m_subComponentManager(new SubComponentManager(m_documentModel.data(), this)),
         m_rewriterView (new RewriterView(RewriterView::Amend, m_documentModel.data())),
         m_documentLoaded(false),
-        m_qtVersionId(-1)
+        m_currentKit(0)
 {
 }
 
@@ -98,17 +99,6 @@ Model *DesignDocument::documentModel() const
 QWidget *DesignDocument::centralWidget() const
 {
     return qobject_cast<QWidget*>(parent());
-}
-
-QString DesignDocument::pathToQt() const
-{
-    QtSupport::BaseQtVersion *activeQtVersion = QtSupport::QtVersionManager::version(m_qtVersionId);
-    if (activeQtVersion && (activeQtVersion->qtVersion() >= QtSupport::QtVersionNumber(4, 7, 1))
-            && (activeQtVersion->type() == QLatin1String(QtSupport::Constants::DESKTOPQT)
-                || activeQtVersion->type() == QLatin1String(QtSupport::Constants::SIMULATORQT)))
-        return activeQtVersion->qmakeProperty("QT_INSTALL_DATA");
-
-    return QString();
 }
 
 const ViewManager &DesignDocument::viewManager() const
@@ -221,9 +211,9 @@ QString DesignDocument::fileName() const
     return editor()->document()->filePath();
 }
 
-int DesignDocument::qtVersionId() const
+ProjectExplorer::Kit *DesignDocument::currentKit() const
 {
-    return m_qtVersionId;
+    return m_currentKit;
 }
 
 bool DesignDocument::isDocumentLoaded() const
@@ -364,7 +354,7 @@ void DesignDocument::deleteSelected()
         }
 
     } catch (RewritingException &e) {
-        QMessageBox::warning(0, tr("Error"), e.description());
+        e.showException();
     }
 }
 
@@ -411,11 +401,11 @@ void DesignDocument::copySelected()
         currentModel()->detachView(&view);
         copyModel->attachView(&view);
 
-        foreach (ModelNode node, view.rootModelNode().allDirectSubModelNodes()) {
+        foreach (ModelNode node, view.rootModelNode().directSubModelNodes()) {
             node.destroy();
         }
         view.changeRootNodeType("QtQuick.Rectangle", 1, 0);
-        view.rootModelNode().setId("designer__Selection");
+        view.rootModelNode().setIdWithRefactoring("designer__Selection");
 
         foreach (const ModelNode &selectedNode, selectedNodes) {
             ModelNode newNode(view.insertModel(selectedNode));
@@ -436,7 +426,7 @@ static void scatterItem(ModelNode pastedNode, const ModelNode targetNode, int of
 {
 
     bool scatter = false;
-    foreach (const ModelNode &childNode, targetNode.allDirectSubModelNodes()) {
+    foreach (const ModelNode &childNode, targetNode.directSubModelNodes()) {
         if ((childNode.variantProperty("x").value() == pastedNode.variantProperty("x").value()) &&
             (childNode.variantProperty("y").value() == pastedNode.variantProperty("y").value()))
             scatter = true;
@@ -485,7 +475,7 @@ void DesignDocument::paste()
         return;
 
     if (rootNode.id() == "designer__Selection") {
-        QList<ModelNode> selectedNodes = rootNode.allDirectSubModelNodes();
+        QList<ModelNode> selectedNodes = rootNode.directSubModelNodes();
         pasteModel->detachView(&view);
         currentModel()->attachView(&view);
 
@@ -552,8 +542,11 @@ void DesignDocument::paste()
             PropertyName defaultProperty(targetNode.metaInfo().defaultPropertyName());
 
             scatterItem(pastedNode, targetNode);
-            if (targetNode.hasNodeListProperty(defaultProperty))
+            if (targetNode.metaInfo().propertyIsListProperty(defaultProperty)) {
                 targetNode.nodeListProperty(defaultProperty).reparentHere(pastedNode);
+            } else {
+                qWarning() << "Cannot reparent to" << targetNode;
+            }
 
             transaction.commit();
             NodeMetaInfo::clearCache();
@@ -643,10 +636,13 @@ static bool isFileInProject(DesignDocument *designDocument, ProjectExplorer::Pro
     return false;
 }
 
-static inline QtSupport::BaseQtVersion *getActiveQtVersion(DesignDocument *designDocument)
+static inline ProjectExplorer::Kit *getActiveKit(DesignDocument *designDocument)
 {
     ProjectExplorer::ProjectExplorerPlugin *projectExplorer = ProjectExplorer::ProjectExplorerPlugin::instance();
     ProjectExplorer::Project *currentProject = projectExplorer->currentProject();
+
+    if (!currentProject)
+        currentProject = ProjectExplorer::SessionManager::projectForFile(designDocument->fileName());
 
     if (!currentProject)
         return 0;
@@ -666,24 +662,14 @@ static inline QtSupport::BaseQtVersion *getActiveQtVersion(DesignDocument *desig
         return 0;
 
     designDocument->connect(target, SIGNAL(kitChanged()), designDocument, SLOT(updateActiveQtVersion()));
-    return QtSupport::QtKitInformation::qtVersion(target->kit());
+
+    return target->kit();
 }
 
 void DesignDocument::updateActiveQtVersion()
 {
-    QtSupport::BaseQtVersion *newQtVersion = getActiveQtVersion(this);
-
-    if (!newQtVersion ) {
-        m_qtVersionId = -1;
-        return;
-    }
-
-    if (m_qtVersionId == newQtVersion->uniqueId())
-        return;
-
-    m_qtVersionId = newQtVersion->uniqueId();
-
-    viewManager().setNodeInstanceViewQtPath(pathToQt());
+    m_currentKit = getActiveKit(this);
+    viewManager().setNodeInstanceViewKit(m_currentKit);
 }
 
 QString DesignDocument::contextHelpId() const

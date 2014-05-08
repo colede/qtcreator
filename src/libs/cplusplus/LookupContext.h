@@ -63,8 +63,11 @@ class CreateBindings;
 
 class CPLUSPLUS_EXPORT ClassOrNamespace
 {
-public:
+    Q_DISABLE_COPY(ClassOrNamespace)
+
     ClassOrNamespace(CreateBindings *factory, ClassOrNamespace *parent);
+
+public:
     ~ClassOrNamespace();
 
     const TemplateNameId *templateId() const;
@@ -93,6 +96,7 @@ public:
 private:
     typedef std::map<const Name *, ClassOrNamespace *, Name::Compare> Table;
     typedef std::map<const TemplateNameId *, ClassOrNamespace *, TemplateNameId::Compare> TemplateNameIdTable;
+    typedef QHash<const AnonymousNameId *, ClassOrNamespace *> Anonymouses;
 
     /// \internal
     void flush();
@@ -138,7 +142,8 @@ private:
     QSharedPointer<Control> _control;
     TemplateNameIdTable _specializations;
     QMap<const TemplateNameId *, ClassOrNamespace *> _instantiations;
-    QHash<const AnonymousNameId *, ClassOrNamespace *> _anonymouses;
+    Anonymouses _anonymouses;
+    QSet<const AnonymousNameId *> _declaredOrTypedefedAnonymouses;
 
     QHash<Internal::FullyQualifiedName, Symbol *> *_scopeLookupCache;
 
@@ -286,7 +291,8 @@ public:
 
     LookupContext(Document::Ptr expressionDocument,
                   Document::Ptr thisDocument,
-                  const Snapshot &snapshot);
+                  const Snapshot &snapshot,
+                  QSharedPointer<CreateBindings> bindings = QSharedPointer<CreateBindings>());
 
     LookupContext(const LookupContext &other);
     LookupContext &operator = (const LookupContext &other);
@@ -308,10 +314,8 @@ public:
     ClassOrNamespace *lookupParent(Symbol *symbol) const;
 
     /// \internal
-    QSharedPointer<CreateBindings> bindings() const;
-
-    /// \internal
-    void setBindings(QSharedPointer<CreateBindings> bindings);
+    QSharedPointer<CreateBindings> bindings() const
+    { return _bindings; }
 
     static QList<const Name *> fullyQualifiedName(Symbol *symbol);
     static QList<const Name *> path(Symbol *symbol);
@@ -338,7 +342,7 @@ private:
     Snapshot _snapshot;
 
     // Bindings
-    mutable QSharedPointer<CreateBindings> _bindings;
+    QSharedPointer<CreateBindings> _bindings;
 
     bool m_expandTemplates;
 };

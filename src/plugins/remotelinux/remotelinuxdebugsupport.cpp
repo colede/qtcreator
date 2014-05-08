@@ -55,7 +55,7 @@ namespace Internal {
 class LinuxDeviceDebugSupportPrivate
 {
 public:
-    LinuxDeviceDebugSupportPrivate(const RemoteLinuxRunConfiguration *runConfig,
+    LinuxDeviceDebugSupportPrivate(const AbstractRemoteLinuxRunConfiguration *runConfig,
             DebuggerEngine *engine)
         : engine(engine),
           qmlDebugging(runConfig->extraAspect<Debugger::DebuggerRunConfigurationAspect>()->useQmlDebugger()),
@@ -76,7 +76,7 @@ public:
 
 using namespace Internal;
 
-DebuggerStartParameters LinuxDeviceDebugSupport::startParameters(const RemoteLinuxRunConfiguration *runConfig)
+DebuggerStartParameters LinuxDeviceDebugSupport::startParameters(const AbstractRemoteLinuxRunConfiguration *runConfig)
 {
     DebuggerStartParameters params;
     Target *target = runConfig->target();
@@ -109,7 +109,7 @@ DebuggerStartParameters LinuxDeviceDebugSupport::startParameters(const RemoteLin
     params.displayName = runConfig->displayName();
 
     if (const Project *project = target->project()) {
-        params.projectSourceDirectory = project->projectDirectory();
+        params.projectSourceDirectory = project->projectDirectory().toString();
         if (const BuildConfiguration *buildConfig = target->activeBuildConfiguration())
             params.projectBuildDirectory = buildConfig->buildDirectory().toString();
         params.projectSourceFiles = project->files(Project::ExcludeGeneratedFiles);
@@ -118,10 +118,10 @@ DebuggerStartParameters LinuxDeviceDebugSupport::startParameters(const RemoteLin
     return params;
 }
 
-LinuxDeviceDebugSupport::LinuxDeviceDebugSupport(RemoteLinuxRunConfiguration *runConfig,
+LinuxDeviceDebugSupport::LinuxDeviceDebugSupport(AbstractRemoteLinuxRunConfiguration *runConfig,
         DebuggerEngine *engine)
     : AbstractRemoteLinuxRunSupport(runConfig, engine),
-      d(new LinuxDeviceDebugSupportPrivate(static_cast<RemoteLinuxRunConfiguration *>(runConfig), engine))
+      d(new LinuxDeviceDebugSupportPrivate(static_cast<AbstractRemoteLinuxRunConfiguration *>(runConfig), engine))
 {
     connect(d->engine, SIGNAL(requestRemoteSetup()), this, SLOT(handleRemoteSetupRequested()));
 }
@@ -165,6 +165,10 @@ void LinuxDeviceDebugSupport::startExecution()
 
     QStringList args = arguments();
     QString command;
+
+    if (d->qmlDebugging)
+        args.prepend(QString::fromLatin1("-qmljsdebugger=port:%1,block").arg(d->qmlPort));
+
     if (d->qmlDebugging && !d->cppDebugging) {
         command = remoteFilePath();
     } else {

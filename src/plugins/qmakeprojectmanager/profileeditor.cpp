@@ -67,11 +67,6 @@ Core::IEditor *ProFileEditor::duplicate()
     return ret->editor();
 }
 
-Core::Id ProFileEditor::id() const
-{
-    return Core::Id(Constants::PROFILE_EDITOR_ID);
-}
-
 TextEditor::CompletionAssistProvider *ProFileEditor::completionAssistProvider()
 {
     return ExtensionSystem::PluginManager::getObject<ProFileCompletionAssistProvider>();
@@ -209,6 +204,7 @@ void ProFileEditorWidget::contextMenuEvent(QContextMenuEvent *e)
 ProFileDocument::ProFileDocument()
         : TextEditor::BaseTextDocument()
 {
+    setId(Constants::PROFILE_EDITOR_ID);
     setMimeType(QLatin1String(Constants::PROFILE_MIMETYPE));
     setSyntaxHighlighter(new ProFileHighlighter);
 }

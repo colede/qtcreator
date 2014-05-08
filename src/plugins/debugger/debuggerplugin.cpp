@@ -106,9 +106,7 @@
 #include <utils/styledbar.h>
 #include <utils/proxyaction.h>
 #include <utils/statuslabel.h>
-#ifdef Q_OS_WIN
-#  include <utils/winutils.h>
-#endif
+#include <utils/winutils.h>
 
 #include <QComboBox>
 #include <QDockWidget>
@@ -588,13 +586,11 @@ public:
     // On a 64bit OS, prefer a 64bit debugger.
     static Kit *findUniversalCdbKit()
     {
-#ifdef Q_OS_WIN
-        if (Utils::winIs64BitSystem()) {
+        if (Utils::is64BitWindowsSystem()) {
             CdbMatcher matcher64(64);
             if (Kit *cdb64Kit = KitManager::find(matcher64))
                 return cdb64Kit;
         }
-#endif
         CdbMatcher matcher;
         return KitManager::find(matcher);
     }
@@ -1359,7 +1355,7 @@ DebuggerCore *debuggerCore()
 
 static QString msgParameterMissing(const QString &a)
 {
-    return DebuggerPlugin::tr("Option '%1' is missing the parameter.").arg(a);
+    return DebuggerPlugin::tr("Option \"%1\" is missing the parameter.").arg(a);
 }
 
 bool DebuggerPluginPrivate::parseArgument(QStringList::const_iterator &it,
@@ -1444,7 +1440,7 @@ bool DebuggerPluginPrivate::parseArgument(QStringList::const_iterator &it,
         sp.displayName = tr("Crashed process %1").arg(sp.attachPID);
         sp.startMessage = tr("Attaching to crashed process %1").arg(sp.attachPID);
         if (!sp.attachPID) {
-            *errorMessage = DebuggerPlugin::tr("The parameter '%1' of option '%2' "
+            *errorMessage = DebuggerPlugin::tr("The parameter \"%1\" of option \"%2\" "
                 "does not match the pattern <handle>:<pid>.").arg(*it, option);
             return false;
         }
@@ -1743,7 +1739,7 @@ DebuggerRunControl *DebuggerPluginPrivate::attachToRunningProcess(Kit *kit,
 
     if (device->type() != PE::DESKTOP_DEVICE_TYPE) {
         QMessageBox::warning(ICore::mainWindow(), tr("Not a Desktop Device Type"),
-                             tr("It is only possible to attach to local running process."));
+                             tr("It is only possible to attach to a locally running process."));
         return 0;
     }
 
@@ -1821,7 +1817,7 @@ void DebuggerPluginPrivate::attachToQmlPort()
         sourceFiles << project->files(Project::ExcludeGeneratedFiles);
 
     sp.projectSourceDirectory =
-            !projects.isEmpty() ? projects.first()->projectDirectory() : QString();
+            !projects.isEmpty() ? projects.first()->projectDirectory().toString() : QString();
     sp.projectSourceFiles = sourceFiles;
     sp.sysRoot = SysRootKitInformation::sysRoot(kit).toString();
     DebuggerRunControlFactory::createAndScheduleRun(sp);
@@ -2063,13 +2059,15 @@ void DebuggerPluginPrivate::requestMark(ITextEditor *editor,
     if (kind != ITextEditor::BreakpointRequest)
         return;
 
-    if (editor->property("DisassemblerView").toBool()) {
-        QString line = editor->textDocument()->plainText()
-            .section(QLatin1Char('\n'), lineNumber - 1, lineNumber - 1);
-        quint64 address = DisassemblerLine::addressFromDisassemblyLine(line);
-        toggleBreakpointByAddress(address);
-    } else if (editor->document()) {
-        toggleBreakpointByFileAndLine(editor->document()->filePath(), lineNumber);
+    if (IDocument *document = editor->document()) {
+        if (document->property(Constants::OPENED_WITH_DISASSEMBLY).toBool()) {
+            QString line = editor->textDocument()->plainText()
+                .section(QLatin1Char('\n'), lineNumber - 1, lineNumber - 1);
+            quint64 address = DisassemblerLine::addressFromDisassemblyLine(line);
+            toggleBreakpointByAddress(address);
+        } else {
+            toggleBreakpointByFileAndLine(document->filePath(), lineNumber);
+        }
     }
 }
 
@@ -2400,7 +2398,7 @@ void DebuggerPluginPrivate::updateDebugActions()
         QString toolTip;
         if (canRunAndBreakMain) {
             QTC_ASSERT(project, return ; );
-            toolTip = tr("Start '%1' and break at function 'main()'")
+            toolTip = tr("Start \"%1\" and break at function \"main()\"")
                       .arg(project->displayName());
         } else {
             // Do not display long tooltip saying run mode is not supported
@@ -2546,9 +2544,9 @@ void DebuggerPluginPrivate::openTextEditor(const QString &titlePattern0,
         return;
     QString titlePattern = titlePattern0;
     IEditor *editor = EditorManager::openEditorWithContents(
-        CC::K_DEFAULT_TEXT_EDITOR_ID, &titlePattern, contents.toUtf8());
+                CC::K_DEFAULT_TEXT_EDITOR_ID, &titlePattern, contents.toUtf8(),
+                EditorManager::IgnoreNavigationHistory);
     QTC_ASSERT(editor, return);
-    EditorManager::activateEditor(editor, EditorManager::IgnoreNavigationHistory);
 }
 
 void DebuggerPluginPrivate::showMessage(const QString &msg, int channel, int timeout)
@@ -2733,7 +2731,7 @@ void DebuggerPluginPrivate::extensionsInitialized()
     m_exitIcon.addFile(QLatin1String(":/debugger/images/debugger_stop.png"));
     m_continueIcon = QIcon(QLatin1String(":/debugger/images/debugger_continue_small.png"));
     m_continueIcon.addFile(QLatin1String(":/debugger/images/debugger_continue.png"));
-    m_interruptIcon = QIcon(_(":/debugger/images/debugger_interrupt_small.png"));
+    m_interruptIcon = QIcon(_(Core::Constants::ICON_PAUSE));
     m_interruptIcon.addFile(QLatin1String(":/debugger/images/debugger_interrupt.png"));
     m_locationMarkIcon = QIcon(_(":/debugger/images/location_16.png"));
 
@@ -3080,7 +3078,7 @@ void DebuggerPluginPrivate::extensionsInitialized()
 
     cmd = ActionManager::registerAction(m_runToSelectedFunctionAction,
         "Debugger.RunToSelectedFunction", cppDebuggercontext);
-    cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Ctrl+F6") : tr("Ctrl+F6")));
+    cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+F6")));
     cmd->setAttribute(Command::CA_Hide);
     // Don't add to menu by default as keeping its enabled state
     // and text up-to-date is a lot of hassle.
@@ -3528,7 +3526,7 @@ void DebuggerPluginPrivate::testProjectLoaded(Project *project)
 
 void DebuggerPluginPrivate::testProjectEvaluated()
 {
-    QString fileName = m_testProject->projectFilePath();
+    QString fileName = m_testProject->projectFilePath().toUserOutput();
     QVERIFY(!fileName.isEmpty());
     qWarning("Project %s loaded", qPrintable(fileName));
     connect(BuildManager::instance(), SIGNAL(buildQueueFinished(bool)),

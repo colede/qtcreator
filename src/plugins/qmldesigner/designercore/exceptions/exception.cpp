@@ -34,6 +34,18 @@
 #include <cxxabi.h>
 #endif
 
+#include <coreplugin/icore.h>
+
+#include <QCoreApplication>
+#include <QMessageBox>
+
+static void showAsyncWarning(const QString &title, const QString &desciption)
+{
+    QMessageBox *messageBox = new QMessageBox(QMessageBox::Warning, title, desciption, QMessageBox::Ok, Core::ICore::dialogParent());
+    messageBox->setAttribute(Qt::WA_DeleteOnClose);
+    messageBox->setModal(true);
+    messageBox->show();
+}
 
 /*!
 \defgroup CoreExceptions
@@ -143,6 +155,15 @@ void Exception::createWarning() const
 QString Exception::description() const
 {
     return QString("file: %1, function: %2, line: %3").arg(m_file, m_function, QString::number(m_line));
+}
+
+/*!
+    Shows message in a message box.
+*/
+void Exception::showException(const QString &title) const
+{
+    QString composedTitle = title.isEmpty() ? QCoreApplication::translate("QmlDesigner", "Error") : title;
+    showAsyncWarning(composedTitle, description());
 }
 
 /*!

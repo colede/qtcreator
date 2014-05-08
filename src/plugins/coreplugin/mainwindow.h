@@ -40,7 +40,6 @@
 
 QT_BEGIN_NAMESPACE
 class QSettings;
-class QShortcut;
 class QPrinter;
 class QToolButton;
 QT_END_NAMESPACE
@@ -96,7 +95,6 @@ public:
 
     Core::IDocument *openFiles(const QStringList &fileNames, ICore::OpenFilesFlags flags);
 
-    QSettings *settings(QSettings::Scope scope) const;
     inline SettingsDatabase *settingsDatabase() const { return m_settingsDatabase; }
     virtual QPrinter *printer() const;
     IContext * currentContextObject() const;
@@ -163,8 +161,6 @@ private:
 
     ICore *m_coreImpl;
     Context m_additionalContexts;
-    QSettings *m_settings;
-    QSettings *m_globalSettings;
     SettingsDatabase *m_settingsDatabase;
     mutable QPrinter *m_printer;
     ActionManager *m_actionManager;
@@ -195,7 +191,7 @@ private:
     SystemEditor *m_systemEditor;
 
     // actions
-    QShortcut *m_focusToEditor;
+    QAction *m_focusToEditor;
     QAction *m_newAction;
     QAction *m_openAction;
     QAction *m_openWithAction;

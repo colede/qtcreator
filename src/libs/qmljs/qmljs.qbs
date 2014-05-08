@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import QtcLibrary
 
 QtcLibrary {
@@ -92,6 +92,7 @@ QtcLibrary {
     }
 
     Export {
+        Depends { name: "CPlusPlus" }
         Depends { name: "LanguageUtils" }
     }
 }

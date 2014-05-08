@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -23,12 +23,16 @@ QtcPlugin {
         "diffeditordocument.h",
         "diffeditorfactory.cpp",
         "diffeditorfactory.h",
+        "diffeditorguicontroller.cpp",
+        "diffeditorguicontroller.h",
         "diffeditormanager.cpp",
         "diffeditormanager.h",
         "diffeditorplugin.cpp",
         "diffeditorplugin.h",
         "differ.cpp",
         "differ.h",
+        "diffutils.cpp",
+        "diffutils.h",
         "sidebysidediffeditorwidget.cpp",
         "sidebysidediffeditorwidget.h",
     ]

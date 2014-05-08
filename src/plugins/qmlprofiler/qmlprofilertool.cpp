@@ -208,7 +208,7 @@ AnalyzerRunControl *QmlProfilerTool::createRunControl(const AnalyzerStartParamet
     QString projectDirectory;
     if (runConfiguration) {
         Project *project = runConfiguration->target()->project();
-        projectDirectory = project->projectDirectory();
+        projectDirectory = project->projectDirectory().toString();
     }
 
     populateFileFinder(projectDirectory, sp.sysroot);
@@ -267,7 +267,7 @@ QWidget *QmlProfilerTool::createWidgets()
     layout->addWidget(d->m_clearButton);
 
     d->m_timeLabel = new QLabel();
-    QPalette palette = d->m_timeLabel->palette();
+    QPalette palette;
     palette.setColor(QPalette::WindowText, Qt::white);
     d->m_timeLabel->setPalette(palette);
     d->m_timeLabel->setIndent(10);
@@ -298,7 +298,7 @@ void QmlProfilerTool::populateFileFinder(QString projectDirectory, QString activ
 
     if (!projects.isEmpty()) {
         if (projectDirectory.isEmpty())
-            projectDirectory = projects.first()->projectDirectory();
+            projectDirectory = projects.first()->projectDirectory().toString();
 
         if (activeSysroot.isEmpty()) {
             if (Target *target = projects.first()->activeTarget())
@@ -342,7 +342,7 @@ void QmlProfilerTool::gotoSourceLocation(const QString &fileUrl, int lineNumber,
     if (lineNumber < 0 || fileUrl.isEmpty())
         return;
 
-    const QString projectFileName = QUrl(fileUrl).toLocalFile();
+    const QString projectFileName = d->m_projectFinder.findFile(fileUrl);
 
     QFileInfo fileInfo(projectFileName);
     if (!fileInfo.exists() || !fileInfo.isReadable())
@@ -366,8 +366,8 @@ void QmlProfilerTool::updateTimeDisplay()
     if (d->m_profilerState->serverRecording() &&
         d->m_profilerState->currentState() == QmlProfilerStateManager::AppRunning) {
             seconds = d->m_recordingElapsedTime.elapsed() / 1000.0;
-    } else if (d->m_profilerModelManager->state() != QmlProfilerDataState::Empty ) {
-        //seconds = d->m_profilerModelManager->traceDuration() / 1.0e9;
+    } else if (d->m_profilerModelManager->state() != QmlProfilerDataState::Empty &&
+               d->m_profilerModelManager->state() != QmlProfilerDataState::ClearingData) {
         seconds = d->m_profilerModelManager->traceTime()->duration() / 1.0e9;
     }
     QString timeString = QString::number(seconds,'f',1);
@@ -448,7 +448,7 @@ void QmlProfilerTool::startTool(StartMode mode)
     }
 }
 
-void QmlProfilerTool::logStatus(const QString &msg)
+void QmlProfilerTool::logState(const QString &msg)
 {
     MessageManager::write(msg, Core::MessageManager::Flash);
 }

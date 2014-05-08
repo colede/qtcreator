@@ -51,7 +51,7 @@ public:
     Core::IDocument *projectFile() const;
     QString projectFilePath() const;
 
-    bool hasBuildTargets() const;
+    bool showInSimpleTree() const;
 
     QList<ProjectExplorer::ProjectAction> supportedActions(Node *node) const;
 
@@ -64,8 +64,6 @@ public:
     bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = 0);
     bool deleteFiles(const QStringList &filePaths);
     bool renameFile(const QString &filePath, const QString &newFilePath);
-
-    QList<ProjectExplorer::RunConfiguration *> runConfigurationsFor(Node *node);
 
     void refresh(QSet<QString> oldFileList = QSet<QString>());
 

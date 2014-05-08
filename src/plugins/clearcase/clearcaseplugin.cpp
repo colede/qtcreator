@@ -381,7 +381,8 @@ QString ClearCasePlugin::ccManagesDirectory(const QString &directory) const
 
     foreach (const QString &relativeVobDir, vobs) {
         const QString vobPath = QDir::cleanPath(rootDir + QDir::fromNativeSeparators(relativeVobDir));
-        const bool isManaged = Utils::FileName::fromString(directory).isChildOf(Utils::FileName::fromString(vobPath));
+        const bool isManaged = (vobPath == directory)
+                || Utils::FileName::fromString(directory).isChildOf(Utils::FileName::fromString(vobPath));
         if (isManaged)
             return vobPath;
     }
@@ -454,9 +455,8 @@ bool ClearCasePlugin::initialize(const QStringList & /*arguments */, QString *er
     m_settings.fromSettings(ICore::settings());
 
     // update view name when changing active project
-    if (ProjectExplorerPlugin *pe = ProjectExplorerPlugin::instance())
-        connect(pe, SIGNAL(currentProjectChanged(ProjectExplorer::Project*)),
-                this, SLOT(projectChanged(ProjectExplorer::Project*)));
+    connect(ProjectExplorerPlugin::instance(), SIGNAL(currentProjectChanged(ProjectExplorer::Project*)),
+            this, SLOT(projectChanged(ProjectExplorer::Project*)));
 
     addAutoReleasedObject(new SettingsPage);
 
@@ -844,8 +844,13 @@ void ClearCasePlugin::updateActions(VcsBase::VcsBasePlugin::ActionState as)
     const VcsBase::VcsBasePluginState state = currentState();
     const bool hasTopLevel = state.hasTopLevel();
     m_commandLocator->setEnabled(hasTopLevel);
-    if (hasTopLevel)
-        m_topLevel = state.topLevel();
+    if (hasTopLevel) {
+        const QString topLevel = state.topLevel();
+        if (m_topLevel != topLevel) {
+            m_topLevel = topLevel;
+            m_viewData = ccGetView(topLevel);
+        }
+    }
 
     m_updateViewAction->setParameter(m_viewData.isDynamic ? QString() : m_viewData.name);
 
@@ -907,7 +912,7 @@ void ClearCasePlugin::undoCheckOutCurrent()
         Ui::UndoCheckOut uncoUi;
         QDialog uncoDlg;
         uncoUi.setupUi(&uncoDlg);
-        uncoUi.lblMessage->setText(tr("Do you want to undo the check out of '%1'?").arg(fileName));
+        uncoUi.lblMessage->setText(tr("Do you want to undo the check out of \"%1\"?").arg(fileName));
         if (uncoDlg.exec() != QDialog::Accepted)
             return;
         keep = uncoUi.chkKeep->isChecked();
@@ -988,7 +993,7 @@ void ClearCasePlugin::undoHijackCurrent()
         QDialog unhijackDlg;
         unhijackUi.setupUi(&unhijackDlg);
         unhijackDlg.setWindowTitle(tr("Undo Hijack File"));
-        unhijackUi.lblMessage->setText(tr("Do you want to undo hijack of '%1'?")
+        unhijackUi.lblMessage->setText(tr("Do you want to undo hijack of \"%1\"?")
                                        .arg(QDir::toNativeSeparators(fileName)));
         if (unhijackDlg.exec() != QDialog::Accepted)
             return;
@@ -1121,7 +1126,7 @@ void ClearCasePlugin::diffActivity()
             // latest version - updated each line
             filever[file].second = shortver;
 
-            // pre-first version. only for the first occurence
+            // pre-first version. only for the first occurrence
             if (filever[file].first.isEmpty()) {
                 int verpos = shortver.lastIndexOf(QRegExp(QLatin1String("[^0-9]"))) + 1;
                 int vernum = shortver.mid(verpos).toInt();
@@ -1517,7 +1522,9 @@ IEditor *ClearCasePlugin::showOutputInEditor(const QString& title, const QString
         qDebug() << "ClearCasePlugin::showOutputInEditor" << title << id.name()
                  <<  "Size= " << output.size() <<  " Type=" << editorType << debugCodec(codec);
     QString s = title;
-    IEditor *editor = EditorManager::openEditorWithContents(id, &s, output.toUtf8());
+    IEditor *editor = EditorManager::openEditorWithContents(id, &s, output.toUtf8(),
+                                                            (EditorManager::OpenInOtherSplit
+                                                             | EditorManager::NoNewSplits));
     connect(editor, SIGNAL(annotateRevisionRequested(QString,QString,QString,int)),
             this, SLOT(annotateVersion(QString,QString,QString,int)));
     ClearCaseEditor *e = qobject_cast<ClearCaseEditor*>(editor->widget());
@@ -1530,7 +1537,6 @@ IEditor *ClearCasePlugin::showOutputInEditor(const QString& title, const QString
         e->setSource(source);
     if (codec)
         e->setCodec(codec);
-    EditorManager::activateEditor(editor);
     return editor;
 }
 
@@ -1657,7 +1663,8 @@ bool ClearCasePlugin::vcsSetActivity(const QString &workingDir, const QString &t
     const ClearCaseResponse actResponse =
             runCleartool(workingDir, args, m_settings.timeOutMS(), ShowStdOutInLogWindow);
     if (actResponse.error) {
-        QMessageBox::warning(0, title, tr("Set current activity failed: %1").arg(actResponse.message), QMessageBox::Ok);
+        QMessageBox::warning(ICore::dialogParent(), title,
+                             tr("Set current activity failed: %1").arg(actResponse.message), QMessageBox::Ok);
         return false;
     }
     m_activity = activity;
@@ -1820,7 +1827,7 @@ bool ClearCasePlugin::vcsAdd(const QString &workingDir, const QString &fileName)
 bool ClearCasePlugin::vcsDelete(const QString &workingDir, const QString &fileName)
 {
     const QString title(tr("ClearCase Remove Element %1").arg(baseName(fileName)));
-    if (QMessageBox::warning(0, title, tr("This operation is irreversible. Are you sure?"),
+    if (QMessageBox::warning(ICore::dialogParent(), title, tr("This operation is irreversible. Are you sure?"),
                          QMessageBox::Yes | QMessageBox::No) == QMessageBox::No)
         return true;
 
@@ -2021,7 +2028,7 @@ void ClearCasePlugin::projectChanged(Project *project)
     disconnect(ICore::mainWindow(), SIGNAL(windowActivated()), this, SLOT(syncSlot()));
     ProgressManager::cancelTasks(ClearCase::Constants::TASK_INDEX);
     if (project) {
-        QString projDir = project->projectDirectory();
+        QString projDir = project->projectDirectory().toString();
         QString topLevel = findTopLevel(projDir);
         m_topLevel = topLevel;
         if (topLevel.isEmpty())
@@ -2054,7 +2061,7 @@ void ClearCasePlugin::updateIndex()
     QFuture<void> result = QtConcurrent::run(&sync,
                project->files(Project::ExcludeGeneratedFiles));
     if (!m_settings.disableIndexer)
-        ProgressManager::addTask(result, tr("CC Indexing"), ClearCase::Constants::TASK_INDEX);
+        ProgressManager::addTask(result, tr("Updating ClearCase Index"), ClearCase::Constants::TASK_INDEX);
 }
 
 /*! retrieve a \a file (usually of the form path\to\filename.cpp@@\main\ver)

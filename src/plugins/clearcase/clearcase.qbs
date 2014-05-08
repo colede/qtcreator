@@ -1,10 +1,9 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
 QtcPlugin {
     name: "ClearCase"
-//    provider: "AudioCodes"
 
     pluginspecreplacements: ({"CLEARCASE_DISABLED_STR": (qbs.targetOS.contains("osx") ? "true": "false")})
 

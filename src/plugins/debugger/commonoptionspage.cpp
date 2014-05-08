@@ -58,14 +58,14 @@ CommonOptionsPageWidget::CommonOptionsPageWidget
     checkBoxUseAlternatingRowColors->setText(tr("Use alternating row colors in debug views"));
 
     checkBoxFontSizeFollowsEditor = new QCheckBox(behaviorBox);
-    checkBoxFontSizeFollowsEditor->setToolTip(tr("Change the font size in the debugger views when the font size in the main editor changes."));
+    checkBoxFontSizeFollowsEditor->setToolTip(tr("Changes the font size in the debugger views when the font size in the main editor changes."));
     checkBoxFontSizeFollowsEditor->setText(tr("Debugger font size follows main editor"));
 
     checkBoxUseToolTipsInMainEditor = new QCheckBox(behaviorBox);
     checkBoxUseToolTipsInMainEditor->setText(tr("Use tooltips in main editor while debugging"));
 
     checkBoxListSourceFiles = new QCheckBox(behaviorBox);
-    checkBoxListSourceFiles->setToolTip(tr("Populate the source file view automatically. This might slow down debugger startup considerably."));
+    checkBoxListSourceFiles->setToolTip(tr("Populates the source file view automatically. This might slow down debugger startup considerably."));
     checkBoxListSourceFiles->setText(tr("Populate source file view automatically"));
 
     checkBoxCloseBuffersOnExit = new QCheckBox(behaviorBox);
@@ -82,21 +82,28 @@ CommonOptionsPageWidget::CommonOptionsPageWidget
     checkBoxBringToForegroundOnInterrrupt->setText(tr("Bring Qt Creator to foreground when application interrupts"));
 
     checkBoxShowQmlObjectTree = new QCheckBox(behaviorBox);
-    checkBoxShowQmlObjectTree->setToolTip(tr("Show QML object tree in Locals & Expressions when connected and not stepping."));
+    checkBoxShowQmlObjectTree->setToolTip(tr("Shows QML object tree in Locals & Expressions when connected and not stepping."));
     checkBoxShowQmlObjectTree->setText(tr("Show QML object tree"));
 
     checkBoxBreakpointsFullPath = new QCheckBox(behaviorBox);
-    checkBoxBreakpointsFullPath->setToolTip(tr("Enable a full file path in breakpoints by default also for GDB."));
+    checkBoxBreakpointsFullPath->setToolTip(tr("Enables a full file path in breakpoints by default also for GDB."));
     checkBoxBreakpointsFullPath->setText(tr("Set breakpoints using a full absolute path"));
 
     checkBoxRegisterForPostMortem = new QCheckBox(behaviorBox);
-    checkBoxRegisterForPostMortem->setToolTip(tr("Register Qt Creator for debugging crashed applications."));
+    checkBoxRegisterForPostMortem->setToolTip(tr("Registers Qt Creator for debugging crashed applications."));
     checkBoxRegisterForPostMortem->setText(tr("Use Qt Creator for post-mortem debugging"));
 
     checkBoxWarnOnReleaseBuilds = new QCheckBox(behaviorBox);
     checkBoxWarnOnReleaseBuilds->setText(tr("Warn when debugging \"Release\" builds"));
-    checkBoxWarnOnReleaseBuilds->setToolTip(tr("Show a warning when starting the debugger "
+    checkBoxWarnOnReleaseBuilds->setToolTip(tr("Shows a warning when starting the debugger "
                                             "on a binary with insufficient debug information."));
+
+    checkBoxKeepEditorStationaryWhileStepping = new QCheckBox(behaviorBox);
+    checkBoxKeepEditorStationaryWhileStepping->setText(tr("Keep editor stationary when stepping"));
+    checkBoxKeepEditorStationaryWhileStepping->setToolTip(tr("Scrolls the editor only when it is necessary "
+                                                             "to keep the current line in view, "
+                                                             "instead of keeping the next statement centered at "
+                                                             "all times."));
 
     labelMaximalStackDepth = new QLabel(tr("Maximum stack depth:"), behaviorBox);
 
@@ -139,7 +146,8 @@ CommonOptionsPageWidget::CommonOptionsPageWidget
     gridLayout->addWidget(checkBoxListSourceFiles, 1, 1, 1, 1);
     gridLayout->addWidget(checkBoxSwitchModeOnExit, 2, 1, 1, 1);
     gridLayout->addWidget(checkBoxShowQmlObjectTree, 3, 1, 1, 1);
-    gridLayout->addWidget(checkBoxRegisterForPostMortem, 4, 1, 1, 1);
+    gridLayout->addWidget(checkBoxKeepEditorStationaryWhileStepping, 4, 1, 1, 1);
+    gridLayout->addWidget(checkBoxRegisterForPostMortem, 5, 1, 1, 1);
     gridLayout->addLayout(horizontalLayout2, 6, 1, 1, 2);
 
     QVBoxLayout *verticalLayout = new QVBoxLayout(this);
@@ -168,6 +176,8 @@ CommonOptionsPageWidget::CommonOptionsPageWidget
         checkBoxShowQmlObjectTree);
     m_group->insert(dc->action(WarnOnReleaseBuilds),
         checkBoxWarnOnReleaseBuilds);
+    m_group->insert(dc->action(StationaryEditorWhileStepping),
+        checkBoxKeepEditorStationaryWhileStepping);
     m_group->insert(dc->action(FontSizeFollowsEditor),
         checkBoxFontSizeFollowsEditor);
     m_group->insert(dc->action(AutoDerefPointers), 0);

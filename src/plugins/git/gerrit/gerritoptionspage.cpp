@@ -89,10 +89,8 @@ GerritOptionsWidget::GerritOptionsWidget(QWidget *parent)
     , m_hostLineEdit(new QLineEdit(this))
     , m_userLineEdit(new QLineEdit(this))
     , m_sshChooser(new Utils::PathChooser)
-    , m_repositoryChooser(new Utils::PathChooser)
     , m_portSpinBox(new QSpinBox(this))
     , m_httpsCheckBox(new QCheckBox(tr("HTTPS")))
-    , m_promptPathCheckBox(new QCheckBox(tr("Always prompt for repository folder")))
 {
     QFormLayout *formLayout = new QFormLayout(this);
     formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
@@ -102,12 +100,6 @@ GerritOptionsWidget::GerritOptionsWidget(QWidget *parent)
     m_sshChooser->setCommandVersionArguments(QStringList(QLatin1String("-V")));
     m_sshChooser->setHistoryCompleter(QLatin1String("Git.SshCommand.History"));
     formLayout->addRow(tr("&ssh:"), m_sshChooser);
-    formLayout->addRow(tr("&Repository:"), m_repositoryChooser);
-    m_repositoryChooser->setToolTip(tr("Default repository where patches will be applied."));
-    m_repositoryChooser->setHistoryCompleter(QLatin1String("Git.RepoDir.History"));
-    formLayout->addRow(tr("Pr&ompt:"), m_promptPathCheckBox);
-    m_promptPathCheckBox->setToolTip(tr("If checked, user will always be\n"
-                                        "asked to confirm the repository path."));
     m_portSpinBox->setMinimum(1);
     m_portSpinBox->setMaximum(65535);
     formLayout->addRow(tr("&Port:"), m_portSpinBox);
@@ -124,10 +116,8 @@ GerritParameters GerritOptionsWidget::parameters() const
     result.host = m_hostLineEdit->text().trimmed();
     result.user = m_userLineEdit->text().trimmed();
     result.ssh = m_sshChooser->path();
-    result.repositoryPath = m_repositoryChooser->path();
     result.port = m_portSpinBox->value();
     result.https = m_httpsCheckBox->isChecked();
-    result.promptPath = m_promptPathCheckBox->isChecked();
     return result;
 }
 
@@ -136,10 +126,8 @@ void GerritOptionsWidget::setParameters(const GerritParameters &p)
     m_hostLineEdit->setText(p.host);
     m_userLineEdit->setText(p.user);
     m_sshChooser->setPath(p.ssh);
-    m_repositoryChooser->setPath(p.repositoryPath);
     m_portSpinBox->setValue(p.port);
     m_httpsCheckBox->setChecked(p.https);
-    m_promptPathCheckBox->setChecked(p.promptPath);
 }
 
 } // namespace Internal

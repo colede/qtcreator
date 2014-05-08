@@ -87,9 +87,9 @@ ToolChainConfigWidget *QnxToolChain::configurationWidget()
 
 void QnxToolChain::addToEnvironment(Utils::Environment &env) const
 {
-    foreach (BlackBerryApiLevelConfiguration* config,
-             BlackBerryConfigurationManager::instance().apiLevels()) {
-        if (config->gccCompiler() == compilerCommand()) {
+    foreach (BlackBerryApiLevelConfiguration *config,
+             BlackBerryConfigurationManager::instance()->apiLevels()) {
+        if (config->qccCompilerPath() == compilerCommand()) {
             setQnxEnvironment(env, config->qnxEnv());
             break;
         }
@@ -106,8 +106,10 @@ QList<Utils::FileName> QnxToolChain::suggestedMkspecList() const
 {
     QList<Utils::FileName> mkspecList;
     mkspecList << Utils::FileName::fromLatin1("qnx-armv7le-qcc");
+    mkspecList << Utils::FileName::fromLatin1("qnx-armle-v7-qcc");
     mkspecList << Utils::FileName::fromLatin1("qnx-x86-qcc");
     mkspecList << Utils::FileName::fromLatin1("blackberry-armv7le-qcc");
+    mkspecList << Utils::FileName::fromLatin1("blackberry-armle-v7-qcc");
     mkspecList << Utils::FileName::fromLatin1("blackberry-x86-qcc");
 
     return mkspecList;
@@ -210,10 +212,12 @@ QnxToolChainConfigWidget::QnxToolChainConfigWidget(QnxToolChain *tc)
     , m_abiWidget(new AbiWidget)
 {
     m_compilerCommand->setExpectedKind(Utils::PathChooser::ExistingCommand);
+    m_compilerCommand->setHistoryCompleter(QLatin1String("Qnx.ToolChain.History"));
     m_compilerCommand->setFileName(tc->compilerCommand());
     m_compilerCommand->setEnabled(!tc->isAutoDetected());
 
     m_ndkPath->setExpectedKind(Utils::PathChooser::ExistingDirectory);
+    m_ndkPath->setHistoryCompleter(QLatin1String("Qnx.Ndk.History"));
     m_ndkPath->setPath(tc->ndkPath());
     m_ndkPath->setEnabled(!tc->isAutoDetected());
 

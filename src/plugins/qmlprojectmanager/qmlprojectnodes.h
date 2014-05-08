@@ -52,7 +52,7 @@ public:
     Core::IDocument *projectFile() const;
     QString projectFilePath() const;
 
-    virtual bool hasBuildTargets() const;
+    virtual bool showInSimpleTree() const;
 
     virtual QList<ProjectExplorer::ProjectAction> supportedActions(Node *node) const;
 
@@ -65,8 +65,6 @@ public:
     virtual bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = 0);
     virtual bool deleteFiles(const QStringList &filePaths);
     virtual bool renameFile(const QString &filePath, const QString &newFilePath);
-    virtual QList<ProjectExplorer::RunConfiguration *> runConfigurationsFor(Node *node);
-
 
     void refresh();
 

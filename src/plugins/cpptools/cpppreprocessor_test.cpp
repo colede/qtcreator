@@ -32,7 +32,11 @@
 #include "cppmodelmanager.h"
 #include "cpppreprocessertesthelper.h"
 #include "cpppreprocessor.h"
+#include "cppsnapshotupdater.h"
+#include "cpptoolseditorsupport.h"
 #include "cpptoolstestcase.h"
+
+#include <texteditor/basetexteditor.h>
 
 #include <cplusplus/CppDocument.h>
 #include <utils/fileutils.h>
@@ -90,7 +94,8 @@ private:
     CppModelManager *m_cmm;
 };
 
-void CppToolsPlugin::test_cpppreprocessor_includes()
+/// Check: Resolved and unresolved includes are properly tracked.
+void CppToolsPlugin::test_cpppreprocessor_includes_resolvedUnresolved()
 {
     QByteArray source =
         "#include \"header.h\"\n"
@@ -103,17 +108,75 @@ void CppToolsPlugin::test_cpppreprocessor_includes()
     QVERIFY(document);
 
     const QList<Document::Include> resolvedIncludes = document->resolvedIncludes();
-    QVERIFY(resolvedIncludes.size() == 1);
-    QVERIFY(resolvedIncludes.at(0).type() == Client::IncludeLocal);
+    QCOMPARE(resolvedIncludes.size(), 1);
+    QCOMPARE(resolvedIncludes.at(0).type(), Client::IncludeLocal);
     QCOMPARE(resolvedIncludes.at(0).unresolvedFileName(), QLatin1String("header.h"));
     const QString expectedResolvedFileName
             = TestIncludePaths::testFilePath(QLatin1String("header.h"));
     QCOMPARE(resolvedIncludes.at(0).resolvedFileName(), expectedResolvedFileName);
 
     const QList<Document::Include> unresolvedIncludes = document->unresolvedIncludes();
-    QVERIFY(unresolvedIncludes.size() == 1);
-    QVERIFY(unresolvedIncludes.at(0).type() == Client::IncludeLocal);
+    QCOMPARE(unresolvedIncludes.size(), 1);
+    QCOMPARE(unresolvedIncludes.at(0).type(), Client::IncludeLocal);
     QCOMPARE(unresolvedIncludes.at(0).unresolvedFileName(), QLatin1String("notresolvable.h"));
     QVERIFY(unresolvedIncludes.at(0).resolvedFileName().isEmpty());
 }
 
+/// Check: Avoid self-include entries due to cyclic includes.
+void CppToolsPlugin::test_cpppreprocessor_includes_cyclic()
+{
+    const QString fileName1 = TestIncludePaths::testFilePath(QLatin1String("cyclic1.h"));
+    const QString fileName2 = TestIncludePaths::testFilePath(QLatin1String("cyclic2.h"));
+    const QStringList sourceFiles = QStringList() << fileName1 << fileName2;
+
+    // Create global snapshot (needed in SnapshotUpdater)
+    TestCase testCase;
+    testCase.parseFiles(sourceFiles);
+
+    // Open editor
+    TextEditor::BaseTextEditor *editor;
+    QVERIFY(testCase.openBaseTextEditor(fileName1, &editor));
+    testCase.closeEditorAtEndOfTestCase(editor);
+
+    // Get editor snapshot
+    CppEditorSupport *cppEditorSupport = CppModelManagerInterface::instance()
+        ->cppEditorSupport(editor);
+    QVERIFY(cppEditorSupport);
+    QSharedPointer<SnapshotUpdater> snapshotUpdater = cppEditorSupport->snapshotUpdater();
+    QVERIFY(snapshotUpdater);
+    Snapshot snapshot = snapshotUpdater->snapshot();
+    QCOMPARE(snapshot.size(), 3); // Configuration file included
+
+    // Check includes
+    Document::Ptr doc1 = snapshot.document(fileName1);
+    QVERIFY(doc1);
+    Document::Ptr doc2 = snapshot.document(fileName2);
+    QVERIFY(doc2);
+
+    QCOMPARE(doc1->unresolvedIncludes().size(), 0);
+    QCOMPARE(doc1->resolvedIncludes().size(), 1);
+    QCOMPARE(doc1->resolvedIncludes().first().resolvedFileName(), fileName2);
+
+    QCOMPARE(doc2->unresolvedIncludes().size(), 0);
+    QCOMPARE(doc2->resolvedIncludes().size(), 1);
+    QCOMPARE(doc2->resolvedIncludes().first().resolvedFileName(), fileName1);
+}
+
+/// Check: All include errors are reported as diagnostic messages.
+void CppToolsPlugin::test_cpppreprocessor_includes_allDiagnostics()
+{
+    QByteArray source =
+        "#include <NotResolvable1>\n"
+        "#include <NotResolvable2>\n"
+        "#include \"/some/nonexisting/file123.h\"\n"
+        "\n"
+        ;
+
+    SourcePreprocessor processor;
+    Document::Ptr document = processor.run(source);
+    QVERIFY(document);
+
+    QCOMPARE(document->resolvedIncludes().size(), 0);
+    QCOMPARE(document->unresolvedIncludes().size(), 3);
+    QCOMPARE(document->diagnosticMessages().size(), 3);
+}

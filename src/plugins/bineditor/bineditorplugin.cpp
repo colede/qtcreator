@@ -205,6 +205,7 @@ public:
     BinEditorDocument(BinEditorWidget *parent) :
         Core::IDocument(parent)
     {
+        setId(Core::Constants::K_DEFAULT_BINARY_EDITOR_ID);
         m_widget = parent;
         connect(m_widget, SIGNAL(dataRequested(quint64)),
             this, SLOT(provideData(quint64)));
@@ -380,7 +381,6 @@ public:
         return m_file->open(errorString, fileName);
     }
     Core::IDocument *document() { return m_file; }
-    Core::Id id() const { return Core::Id(Core::Constants::K_DEFAULT_BINARY_EDITOR_ID); }
 
     QWidget *toolBar() { return m_toolBar; }
 

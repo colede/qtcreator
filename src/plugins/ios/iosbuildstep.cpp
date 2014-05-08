@@ -111,14 +111,14 @@ bool IosBuildStep::init()
     if (!bc)
         bc = target()->activeBuildConfiguration();
 
-    m_tasks.clear();
     ToolChain *tc = ToolChainKitInformation::toolChain(target()->kit());
     if (!tc) {
         Task t = Task(Task::Error, tr("Qt Creator needs a compiler set up to build. Configure a compiler in the kit preferences."),
                       Utils::FileName(), -1,
                       Core::Id(ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM));
-        m_tasks.append(t);
         emit addTask(t);
+        emit addOutput(tr("Configuration is faulty. Check the Issues output pane for details."),
+                       BuildStep::MessageOutput);
         return false;
     }
     ProcessParameters *pp = processParameters();
@@ -217,19 +217,6 @@ QString IosBuildStep::buildCommand() const
 
 void IosBuildStep::run(QFutureInterface<bool> &fi)
 {
-    bool canContinue = true;
-    foreach (const Task &t, m_tasks) {
-        addTask(t);
-        canContinue = false;
-    }
-    if (!canContinue) {
-        emit addOutput(tr("Configuration is faulty. Check the Issues output pane for details."),
-                       BuildStep::MessageOutput);
-        fi.reportResult(false);
-        emit finished();
-        return;
-    }
-
     AbstractProcessStep::run(fi);
 }
 
@@ -356,15 +343,16 @@ IosBuildStepFactory::IosBuildStepFactory(QObject *parent) :
 {
 }
 
-bool IosBuildStepFactory::canCreate(BuildStepList *parent, const Id) const
+bool IosBuildStepFactory::canCreate(BuildStepList *parent, const Id id) const
 {
     if (parent->id() != ProjectExplorer::Constants::BUILDSTEPS_CLEAN
             && parent->id() != ProjectExplorer::Constants::BUILDSTEPS_BUILD)
         return false;
     Kit *kit = parent->target()->kit();
     Core::Id deviceType = DeviceTypeKitInformation::deviceTypeId(kit);
-    return (deviceType == Constants::IOS_DEVICE_TYPE
-            || deviceType == Constants::IOS_SIMULATOR_TYPE);
+    return ((deviceType == Constants::IOS_DEVICE_TYPE
+            || deviceType == Constants::IOS_SIMULATOR_TYPE)
+            && id == IOS_BUILD_STEP_ID);
 }
 
 BuildStep *IosBuildStepFactory::create(BuildStepList *parent, const Id id)

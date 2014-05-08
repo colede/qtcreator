@@ -127,6 +127,8 @@ private Q_SLOTS:
     void functionDefaultArgument();
     void attributeInAccessSpecifier();
     void braceReturn();
+    void staticVarDeclWithTypeDecl();
+    void strings();
 };
 
 struct Line {
@@ -193,9 +195,9 @@ void checkIndent(QList<Line> data, QtStyleCodeFormatter formatter)
         if (l.expectedIndent != -1) {
             int indent, padding;
             formatter.indentFor(b, &indent, &padding);
-            QVERIFY2(indent == l.expectedIndent, qPrintable(QString("Wrong indent in line %1 with text '%2', expected indent %3, got %4")
+            QVERIFY2(indent == l.expectedIndent, qPrintable(QString("Wrong indent in line %1 with text \"%2\", expected indent %3, got %4")
                                                             .arg(QString::number(i+1), l.line, QString::number(l.expectedIndent), QString::number(indent))));
-            QVERIFY2(padding == l.expectedPadding, qPrintable(QString("Wrong padding in line %1 with text '%2', expected padding %3, got %4")
+            QVERIFY2(padding == l.expectedPadding, qPrintable(QString("Wrong padding in line %1 with text \"%2\", expected padding %3, got %4")
                                                               .arg(QString::number(i+1), l.line, QString::number(l.expectedPadding), QString::number(padding))));
         }
         formatter.updateLineStateChange(b);
@@ -1176,6 +1178,8 @@ void tst_CodeFormatter::templates()
          << Line("~           class F, class D>,")
          << Line("~       typename F>")
          << Line("class Foo { };")
+         << Line("template <class A = std::vector<int>>")
+         << Line("")
          ;
     checkIndent(data);
 }
@@ -1281,6 +1285,9 @@ void tst_CodeFormatter::functionReturnType()
          << Line("template <class T>")
          << Line("const QList<QMap<T, T> > &")
          << Line("A::B::foo() {}")
+         << Line("std::map<int,std::vector<int>> indent() {}")
+         << Line("std::map<int,std::vector<int> > indent() {}")
+         << Line("")
          ;
     checkIndent(data);
 }
@@ -2108,6 +2115,60 @@ void tst_CodeFormatter::braceReturn()
          << Line("    int x;")
          << Line("};")
          ;
+    checkIndent(data);
+}
+
+void tst_CodeFormatter::staticVarDeclWithTypeDecl()
+{
+    QList<Line> data;
+    data << Line("static class: public Foo {")
+         << Line("public:")
+         << Line("    int bar();")
+         << Line("} mooze;")
+         << Line("")
+         << Line("static enum Col {")
+         << Line("    red,")
+         << Line("    yellow,")
+         << Line("    green")
+         << Line("} Loc;")
+         << Line("")
+         << Line("static enum {")
+         << Line("    red,")
+         << Line("    yellow,")
+         << Line("    green")
+         << Line("} Loc;")
+         << Line("")
+         << Line("enum class Col {")
+         << Line("    red,")
+         << Line("    yellow,")
+         << Line("    green")
+         << Line("};")
+         << Line("")
+         << Line("static enum class Col")
+         << Line("{")
+         << Line("    red,")
+         << Line("    yellow,")
+         << Line("    green")
+         << Line("} Loc;")
+         << Line("")
+            ;
+    checkIndent(data);
+}
+
+void tst_CodeFormatter::strings()
+{
+    QList<Line> data;
+    data << Line("char *a = \"foo\"")
+         << Line("          \"bar\" \"why\"")
+         << Line("          \"baz\";")
+         << Line("void foo()")
+         << Line("{")
+         << Line("    func(1, 2, \"foo\"")
+         << Line("               \"bar\"")
+         << Line("               \"baz\", 4,")
+         << Line("    ~    5, 6);")
+         << Line("}")
+            ;
     checkIndent(data);
 }
 

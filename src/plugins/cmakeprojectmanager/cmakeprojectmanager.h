@@ -31,14 +31,11 @@
 #define CMAKEPROJECTMANAGER_H
 
 #include <projectexplorer/iprojectmanager.h>
-#include <coreplugin/dialogs/ioptionspage.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectnodes.h>
 #include <coreplugin/icontext.h>
-#include <texteditor/codeassist/keywordscompletionassist.h>
 
 #include <utils/environment.h>
-#include <utils/pathchooser.h>
 
 #include <QAction>
 #include <QCheckBox>
@@ -48,9 +45,7 @@
 #include <QStringList>
 #include <QVector>
 
-#include "cmakevalidator.h"
-
-QT_FORWARD_DECLARE_CLASS(QLabel)
+#include "cmakesettingspage.h"
 
 namespace Utils { class QtcProcess; }
 
@@ -97,38 +92,6 @@ private:
     QAction *m_runCMakeAction;
     QAction *m_runCMakeActionContextMenu;
     ProjectExplorer::Project *m_contextProject;
-};
-
-class CMakeSettingsPage : public Core::IOptionsPage
-{
-    Q_OBJECT
-
-public:
-    CMakeSettingsPage();
-    ~CMakeSettingsPage();
-
-    QWidget *widget();
-    void apply();
-    void finish();
-
-    QString cmakeExecutable() const;
-    void setCMakeExecutable(const QString &executable);
-    bool isCMakeExecutableValid() const;
-    bool hasCodeBlocksMsvcGenerator() const;
-    bool hasCodeBlocksNinjaGenerator() const;
-    bool preferNinja() const;
-
-    TextEditor::Keywords keywords();
-
-private:
-    void saveSettings() const;
-    QString findCmakeExecutable() const;
-
-    QPointer<QWidget> m_widget;
-    Utils::PathChooser *m_pathchooser;
-    QCheckBox *m_preferNinja;
-    CMakeValidator m_cmakeValidatorForUser;
-    CMakeValidator m_cmakeValidatorForSystem;
 };
 
 } // namespace Internal

@@ -64,6 +64,13 @@ JIRA_URL='https://bugreports.qt-project.org/browse'
 class JIRA:
     __instance__ = None
 
+    # internal exception to be used inside workaround functions (lack of having return values)
+    class JiraException(Exception):
+        def __init__(self, value):
+            self.value = value
+        def __str__(self):
+            return repr(self.value)
+
     # Helper class
     class Bug:
         CREATOR = 'QTCREATORBUG'
@@ -82,12 +89,12 @@ class JIRA:
             JIRA.__instance__._number = number
             JIRA.__instance__.__fetchResolutionFromJira__()
 
-    # overriden to make it possible to use JIRA just like the
+    # overridden to make it possible to use JIRA just like the
     # underlying implementation (__impl)
     def __getattr__(self, attr):
         return getattr(self.__instance__, attr)
 
-    # overriden to make it possible to use JIRA just like the
+    # overridden to make it possible to use JIRA just like the
     # underlying implementation (__impl)
     def __setattr__(self, attr, value):
         return setattr(self.__instance__, attr, value)
@@ -117,7 +124,15 @@ class JIRA:
         functionToCall = JIRA.getInstance().__bugs__.get("%s-%d" % (bugType, number), None)
         if functionToCall:
             test.warning("Using workaround for %s-%d" % (bugType, number))
-            functionToCall(*args)
+            try:
+                functionToCall(*args)
+            except:
+                t, v = sys.exc_info()[0:2]
+                if t == JIRA.JiraException:
+                    raise JIRA.JiraException(v)
+                else:
+                    test.warning("Exception caught while executing workaround function.",
+                                 "%s (%s)" % (str(t), str(v)))
             return True
         else:
             JIRA.getInstance()._exitFatal_(bugType, number)

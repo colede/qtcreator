@@ -89,7 +89,7 @@ bool IosDeployStep::init()
     IosRunConfiguration * runConfig = qobject_cast<IosRunConfiguration *>(
                 this->target()->activeRunConfiguration());
     QTC_CHECK(runConfig);
-    m_bundlePath = runConfig->bundleDir().toString();
+    m_bundlePath = runConfig->bundleDirectory().toString();
     if (m_device.isNull()) {
         emit addOutput(tr("Error: no device available, deploy failed."),
                        BuildStep::ErrorMessageOutput);
@@ -113,7 +113,7 @@ void IosDeployStep::run(QFutureInterface<bool> &fi)
     }
     m_transferStatus = TransferInProgress;
     QTC_CHECK(m_toolHandler == 0);
-    m_toolHandler = new IosToolHandler(IosToolHandler::IosDeviceType, this);
+    m_toolHandler = new IosToolHandler(IosDeviceType::IosDevice, this);
     m_futureInterface.setProgressRange(0, 200);
     m_futureInterface.setProgressValueAndText(0, QLatin1String("Transferring application"));
     m_futureInterface.reportStarted();

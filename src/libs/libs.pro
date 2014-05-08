@@ -1,3 +1,5 @@
+include(../../qtcreator.pri)
+
 TEMPLATE  = subdirs
 
 SUBDIRS   = \
@@ -23,17 +25,22 @@ for(l, SUBDIRS) {
 SUBDIRS += \
     utils/process_stub.pro
 
-QBS_DIRS = \
-    corelib \
-    qtprofilesetup \
-    ../shared/qbs/src/plugins \
-    ../shared/qbs/static.pro
-corelib.subdir = ../shared/qbs/src/lib/corelib
-qtprofilesetup.subdir = ../shared/qbs/src/lib/qtprofilesetup
-qtprofilesetup.depends = corelib
+minQtVersion(5, 0, 0) {
+    QBS_DIRS = \
+        corelib \
+        qtprofilesetup \
+        apps \
+        ../shared/qbs/src/plugins \
+        ../shared/qbs/static.pro
+    corelib.subdir = ../shared/qbs/src/lib/corelib
+    qtprofilesetup.subdir = ../shared/qbs/src/lib/qtprofilesetup
+    qtprofilesetup.depends = corelib
+    apps.subdir = ../shared/qbs/src/app
+    apps.depends = qtprofilesetup
 
-exists(../shared/qbs/qbs.pro): SUBDIRS += $$QBS_DIRS
-TR_EXCLUDE = $$QBS_DIRS
+    exists(../shared/qbs/qbs.pro): SUBDIRS += $$QBS_DIRS
+    TR_EXCLUDE = $$QBS_DIRS
+}
 
 win32:SUBDIRS += utils/process_ctrlc_stub.pro
 

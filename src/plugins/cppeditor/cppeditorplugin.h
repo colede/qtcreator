@@ -142,6 +142,7 @@ private slots:
     void test_quickfix_InsertDefFromDecl_macroUsesAtEndOfFile2();
     void test_quickfix_InsertDefFromDecl_erroneousStatementAtEndOfFile();
     void test_quickfix_InsertDefFromDecl_rvalueReference();
+    void test_quickfix_InsertDefFromDecl_findImplementationFile();
 
     void test_quickfix_InsertDeclFromDef();
 
@@ -207,9 +208,8 @@ private slots:
     void test_quickfix_InsertVirtualMethods_BaseClassInNamespace();
 
     // tests for "Include Hiererchy"
-    void test_includeHierarchyModel_simpleIncludes();
-    void test_includeHierarchyModel_simpleIncludedBy();
-    void test_includeHierarchyModel_simpleIncludesAndIncludedBy();
+    void test_includehierarchy_data();
+    void test_includehierarchy();
 
     // The following tests depend on the projects that are loaded on startup
     // and will be skipped in case no projects are loaded.

@@ -31,6 +31,7 @@
 
 #include <QDir>
 #include <QProcessEnvironment>
+#include <QSet>
 #include <QCoreApplication>
 
 class SystemEnvironment : public Utils::Environment
@@ -72,7 +73,7 @@ QList<EnvironmentItem> EnvironmentItem::fromStringList(const QStringList &list)
 {
     QList<EnvironmentItem> result;
     foreach (const QString &string, list) {
-        int pos = string.indexOf(QLatin1Char('='));
+        int pos = string.indexOf(QLatin1Char('='), 1);
         if (pos == -1) {
             EnvironmentItem item(string, QString());
             item.unset = true;
@@ -100,7 +101,7 @@ QStringList EnvironmentItem::toStringList(const QList<EnvironmentItem> &list)
 Environment::Environment(const QStringList &env, OsType osType) : m_osType(osType)
 {
     foreach (const QString &s, env) {
-        int i = s.indexOf(QLatin1Char('='));
+        int i = s.indexOf(QLatin1Char('='), 1);
         if (i >= 0) {
             if (m_osType == OsTypeWindows)
                 m_values.insert(s.left(i).toUpper(), s.mid(i+1));
@@ -262,7 +263,11 @@ QString Environment::searchInPath(const QString &executable,
     if (fi.isAbsolute())
         return exec;
 
+    QSet<QString> alreadyChecked;
     foreach (const QString &dir, additionalDirs) {
+        if (alreadyChecked.contains(dir))
+            continue;
+        alreadyChecked.insert(dir);
         QString tmp = searchInDirectory(execs, dir);
         if (!tmp.isEmpty())
             return tmp;
@@ -272,6 +277,9 @@ QString Environment::searchInPath(const QString &executable,
         return QString();
 
     foreach (const QString &p, path()) {
+        if (alreadyChecked.contains(p))
+            continue;
+        alreadyChecked.insert(p);
         QString tmp = searchInDirectory(execs, QDir::fromNativeSeparators(p));
         if (!tmp.isEmpty())
             return tmp;

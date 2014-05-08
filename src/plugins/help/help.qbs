@@ -1,23 +1,38 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
 QtcPlugin {
     name: "Help"
 
-    Depends { name: "Qt"; submodules: ["help", "network", "webkit"]; }
+    Depends { name: "Qt"; submodules: ["help", "network"]; }
     Depends {
         condition: Qt.core.versionMajor >= 5;
-        name: "Qt"; submodules: ["printsupport", "webkitwidgets"];
+        name: "Qt.printsupport"
     }
+    Depends {
+        name: "Qt.webkit"
+        required: false
+    }
+    Depends {
+        name: "Qt.webkitwidgets"
+        condition: Qt.core.versionMajor >= 5 && Qt.webkit.present
+    }
+
     Depends { name: "Aggregation" }
     Depends { name: "Utils" }
 
     Depends { name: "Core" }
+    Depends { name: "ProjectExplorer" }
 
     Depends { name: "app_version_header" }
 
-    cpp.defines: base.concat(["QT_CLUCENE_SUPPORT"])
+    cpp.defines: {
+        var defines = base.concat(["QT_CLUCENE_SUPPORT"]);
+        if (Qt.core.versionMajor >= 5 && !Qt.webkit.present)
+            defines.push("QT_NO_WEBKIT");
+        return defines;
+    }
 
     // We include headers from src/shared/help, and their sources include headers from here...
     cpp.includePaths: base.concat([sharedSources.prefix, path])
@@ -45,6 +60,7 @@ QtcPlugin {
             "openpagesswitcher.cpp", "openpagesswitcher.h",
             "openpageswidget.cpp", "openpageswidget.h",
             "remotehelpfilter.cpp", "remotehelpfilter.h", "remotehelpfilter.ui",
+            "searchtaskhandler.cpp", "searchtaskhandler.h",
             "searchwidget.cpp", "searchwidget.h",
             "xbelsupport.cpp", "xbelsupport.h",
         ]

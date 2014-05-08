@@ -28,10 +28,13 @@
 ****************************************************************************/
 
 #include "cppcompletionassist.h"
+
+#include "cppdoxygen.h"
 #include "cppmodelmanager.h"
+#include "cppmodelmanagerinterface.h"
+#include "cppsnapshotupdater.h"
 #include "cpptoolsconstants.h"
 #include "cpptoolseditorsupport.h"
-#include "cppdoxygen.h"
 
 #include <coreplugin/icore.h>
 #include <cppeditor/cppeditorconstants.h>
@@ -422,24 +425,12 @@ TextEditor::IAssistInterface *InternalCompletionAssistProvider::createAssistInte
         int position, TextEditor::AssistReason reason) const
 {
     Q_UNUSED(project);
+    QTC_ASSERT(editor, return 0);
+    QTC_ASSERT(document, return 0);
 
     CppModelManagerInterface *modelManager = CppModelManagerInterface::instance();
-
-    if (CppEditorSupport *supp = modelManager->cppEditorSupport(editor)) {
-        if (QSharedPointer<SnapshotUpdater> updater = supp->snapshotUpdater()) {
-            updater->update(modelManager->workingCopy());
-            return new CppTools::Internal::CppCompletionAssistInterface(
-                        document,
-                        position,
-                        editor->document()->filePath(),
-                        reason,
-                        updater->snapshot(),
-                        updater->includePaths(),
-                        updater->frameworkPaths());
-        }
-    }
-
-    return 0;
+    return new CppTools::Internal::CppCompletionAssistInterface(editor, document, position, reason,
+                                                                modelManager->workingCopy());
 }
 
 // -----------------
@@ -1356,6 +1347,11 @@ void CppCompletionAssistProcessor::globalCompletion(CPlusPlus::Scope *currentSco
                     if (UsingNamespaceDirective *u = member->asUsingNamespaceDirective()) {
                         if (ClassOrNamespace *b = binding->lookupType(u->name()))
                             usingBindings.append(b);
+                    } else if (Class *c = member->asClass()) {
+                        if (c->name()->isAnonymousNameId()) {
+                            if (ClassOrNamespace *b = binding->findBlock(block))
+                                completeClass(b);
+                        }
                     }
                 }
             }
@@ -1551,6 +1547,8 @@ void CppCompletionAssistProcessor::completeClass(CPlusPlus::ClassOrNamespace *b,
         foreach (Symbol *bb, binding->symbols()) {
             if (Class *k = bb->asClass())
                 scopesToVisit.append(k);
+            else if (Block *b = bb->asBlock())
+                scopesToVisit.append(b);
         }
 
         foreach (Enum *e, binding->unscopedEnums())
@@ -1566,25 +1564,44 @@ void CppCompletionAssistProcessor::completeClass(CPlusPlus::ClassOrNamespace *b,
             if (staticLookup)
                 addCompletionItem(scope, InjectedClassNameOrder); // add a completion item for the injected class name.
 
-            for (Scope::iterator it = scope->firstMember(); it != scope->lastMember(); ++it) {
-                Symbol *member = *it;
-                if (member->isFriend()
-                        || member->isQtPropertyDeclaration()
-                        || member->isQtEnum()) {
-                    continue;
-                } else if (!staticLookup && (member->isTypedef() ||
-                                            member->isEnum()    ||
-                                            member->isClass())) {
-                    continue;
-                }
-
-                if (member->isPublic())
-                    addCompletionItem(member, PublicClassMemberOrder);
-                else
-                    addCompletionItem(member);
-            }
+            addClassMembersToCompletion(scope, staticLookup);
         }
     }
+}
+
+void CppCompletionAssistProcessor::addClassMembersToCompletion(Scope *scope, bool staticLookup)
+{
+    if (!scope)
+        return;
+
+    std::set<Class *> nestedAnonymouses;
+
+    for (Scope::iterator it = scope->firstMember(); it != scope->lastMember(); ++it) {
+        Symbol *member = *it;
+        if (member->isFriend()
+                || member->isQtPropertyDeclaration()
+                || member->isQtEnum()) {
+            continue;
+        } else if (!staticLookup && (member->isTypedef() ||
+                                    member->isEnum()    ||
+                                    member->isClass())) {
+            continue;
+        } else if (member->isClass() && member->name()->isAnonymousNameId()) {
+            nestedAnonymouses.insert(member->asClass());
+        } else if (member->isDeclaration()) {
+            Class *declTypeAsClass = member->asDeclaration()->type()->asClassType();
+            if (declTypeAsClass && declTypeAsClass->name()->isAnonymousNameId())
+                nestedAnonymouses.erase(declTypeAsClass);
+        }
+
+        if (member->isPublic())
+            addCompletionItem(member, PublicClassMemberOrder);
+        else
+            addCompletionItem(member);
+    }
+    std::set<Class *>::const_iterator citEnd = nestedAnonymouses.end();
+    for (std::set<Class *>::const_iterator cit = nestedAnonymouses.begin(); cit != citEnd; ++cit)
+        addClassMembersToCompletion(*cit, staticLookup);
 }
 
 bool CppCompletionAssistProcessor::completeQtMethod(const QList<CPlusPlus::LookupItem> &results, bool wantSignals)
@@ -1929,4 +1946,21 @@ bool CppCompletionAssistProcessor::completeConstructorOrFunction(const QList<CPl
     }
 
     return false;
+}
+
+void CppCompletionAssistInterface::getCppSpecifics() const
+{
+    if (m_gotCppSpecifics)
+        return;
+    m_gotCppSpecifics = true;
+
+    CppModelManagerInterface *modelManager = CppModelManagerInterface::instance();
+    if (CppEditorSupport *supp = modelManager->cppEditorSupport(m_editor)) {
+        if (QSharedPointer<SnapshotUpdater> updater = supp->snapshotUpdater()) {
+            updater->update(m_workingCopy);
+            m_snapshot = updater->snapshot();
+            m_includePaths = updater->includePaths();
+            m_frameworkPaths = updater->frameworkPaths();
+        }
+    }
 }

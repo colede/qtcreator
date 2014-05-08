@@ -123,7 +123,7 @@ PanelsWidget::PanelsWidget(QWidget *parent) :
     m_root->setMaximumWidth(900);
     m_root->setContentsMargins(0, 0, 40, 0);
 
-    QPalette pal = m_root->palette();
+    QPalette pal;
     QColor background = Utils::StyleHelper::mergedColors(
                 palette().window().color(), Qt::white, 85);
     pal.setColor(QPalette::All, QPalette::Window, background.darker(102));
@@ -347,7 +347,7 @@ void ProjectWindow::registerProject(ProjectExplorer::Project *project)
     }
 
     m_tabIndexToProject.insert(index, project);
-    m_tabWidget->insertTab(index, project->displayName(), project->projectFilePath(), subtabs);
+    m_tabWidget->insertTab(index, project->displayName(), project->projectFilePath().toString(), subtabs);
 
     connect(project, SIGNAL(removedTarget(ProjectExplorer::Target*)),
             this, SLOT(removedTarget(ProjectExplorer::Target*)));

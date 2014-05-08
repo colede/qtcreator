@@ -31,6 +31,7 @@
 #define IPOTENTIALKIT_H
 
 #include <QObject>
+#include <QMetaType>
 #include "projectexplorer_export.h"
 
 namespace ProjectExplorer {
@@ -40,9 +41,13 @@ class PROJECTEXPLORER_EXPORT IPotentialKit : public QObject
     Q_OBJECT
 public:
     virtual ~IPotentialKit();
+    virtual QString displayName() const = 0;
+    virtual void executeFromMenu() = 0;
     virtual QWidget *createWidget(QWidget *parent) const = 0;
+    virtual bool isEnabled() const = 0;
 };
 
 }
+Q_DECLARE_METATYPE(ProjectExplorer::IPotentialKit*)
 
 #endif // IPOTENTIALKIT_H

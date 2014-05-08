@@ -35,6 +35,7 @@
 #include "cppsemanticinfo.h"
 #include "cppsnapshotupdater.h"
 
+#include <cplusplus/Control.h>
 #include <cplusplus/CppDocument.h>
 
 #include <QFuture>
@@ -43,7 +44,10 @@
 #include <QSharedPointer>
 #include <QTimer>
 
-namespace CPlusPlus { class AST; }
+namespace CPlusPlus {
+class AST;
+class DeclarationAST;
+} // namespace CPlusPlus
 
 namespace TextEditor {
 class BaseTextEditor;
@@ -110,16 +114,22 @@ public:
     bool initialized();
 
     /// Retrieve the semantic info, which will get recalculated on the current
-    /// thread if it is outdate.
-    SemanticInfo recalculateSemanticInfo(bool emitSignalWhenFinished = true);
+    /// thread if it is outdate. Will not emit the semanticInfoUpdated() signal.
+    SemanticInfo recalculateSemanticInfo();
 
     CPlusPlus::Document::Ptr lastSemanticInfoDocument() const;
+
+    enum ForceReason {
+        NoForce,
+        ForceDueToInvalidSemanticInfo,
+        ForceDueEditorRequest
+    };
 
     /// Recalculates the semantic info in a future, and will emit the
     /// semanticInfoUpdated() signal when finished.
     /// Requires that initialized() is true.
-    /// \param force do not check if the old semantic info is still valid
-    void recalculateSemanticInfoDetached(bool force = false);
+    /// \param forceReason the reason to force, if any
+    void recalculateSemanticInfoDetached(ForceReason forceReason);
 
     CppCompletionAssistProvider *completionAssistProvider() const;
 
@@ -144,7 +154,7 @@ private slots:
     void updateDocumentNow();
 
     void onDocumentUpdated(CPlusPlus::Document::Ptr doc);
-    void startHighlighting();
+    void startHighlighting(ForceReason forceReason = NoForce);
 
     void onDiagnosticsChanged();
 
@@ -171,11 +181,29 @@ private:
     };
 
 private:
+    class FuturizedTopLevelDeclarationProcessor: public CPlusPlus::TopLevelDeclarationProcessor
+    {
+    public:
+        FuturizedTopLevelDeclarationProcessor(QFutureInterface<void> &future): m_future(future) {}
+        bool processDeclaration(CPlusPlus::DeclarationAST *) { return !isCanceled(); }
+        bool isCanceled() { return m_future.isCanceled(); }
+    private:
+        QFutureInterface<void> m_future;
+    };
+
     SemanticInfo::Source currentSource(bool force);
-    void recalculateSemanticInfoNow(const SemanticInfo::Source &source, bool emitSignalWhenFinished,
-                                    CPlusPlus::TopLevelDeclarationProcessor *processor = 0);
+    SemanticInfo recalculateSemanticInfoNow(const SemanticInfo::Source &source,
+                                            bool emitSignalWhenFinished,
+                                            FuturizedTopLevelDeclarationProcessor *processor = 0);
     void recalculateSemanticInfoDetached_helper(QFutureInterface<void> &future,
                                                 SemanticInfo::Source source);
+
+    bool isSemanticInfoValid() const;
+    SemanticInfo semanticInfo() const;
+    void setSemanticInfo(const SemanticInfo &semanticInfo, bool emitSignal = true);
+
+    QSharedPointer<SnapshotUpdater> snapshotUpdater_internal() const;
+    void setSnapshotUpdater_internal(const QSharedPointer<SnapshotUpdater> &updater);
 
 private:
     Internal::CppModelManager *m_modelManager;
@@ -205,10 +233,12 @@ private:
     mutable QMutex m_lastSemanticInfoLock;
     SemanticInfo m_lastSemanticInfo;
     QFuture<void> m_futureSemanticInfo;
+    mutable QMutex m_snapshotUpdaterLock;
     QSharedPointer<SnapshotUpdater> m_snapshotUpdater;
 
     // Highlighting:
     unsigned m_lastHighlightRevision;
+    bool m_lastHighlightOnCompleteSemanticInfo;
     QFuture<TextEditor::HighlightingResult> m_highlighter;
     QScopedPointer<CppTools::CppHighlightingSupport> m_highlightingSupport;
 

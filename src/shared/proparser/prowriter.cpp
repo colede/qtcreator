@@ -27,6 +27,7 @@
 **
 ****************************************************************************/
 
+#include "qmakeparser.h"
 #include "prowriter.h"
 #include "proitems.h"
 
@@ -173,7 +174,34 @@ static const ushort *skipToken(ushort tok, const ushort *&tokPtr, int &lineNo)
     return 0;
 }
 
-bool ProWriter::locateVarValues(const ushort *tokPtr,
+QString ProWriter::compileScope(const QString &scope)
+{
+    if (scope.isEmpty())
+        return QString();
+    QMakeParser parser(0, 0, 0);
+    ProFile *includeFile = parser.parsedProBlock(scope, QLatin1String("no-file"), 1);
+    if (!includeFile)
+        return QString();
+    QString result = includeFile->items();
+    includeFile->deref();
+    return result.mid(2); // chop of TokLine + linenumber
+}
+
+static bool startsWithTokens(const ushort *that, const ushort *thatEnd, const ushort *s, const ushort *sEnd)
+{
+    if (thatEnd - that < sEnd - s)
+        return false;
+
+    do {
+        if (*that != *s)
+            return false;
+        ++that;
+        ++s;
+    } while (s < sEnd);
+    return true;
+}
+
+bool ProWriter::locateVarValues(const ushort *tokPtr, const ushort *tokPtrEnd,
     const QString &scope, const QString &var, int *scopeStart, int *bestLine)
 {
     const bool inScope = scope.isEmpty();
@@ -181,6 +209,10 @@ bool ProWriter::locateVarValues(const ushort *tokPtr,
     QString tmp;
     const ushort *lastXpr = 0;
     bool fresh = true;
+
+    QString compiledScope = compileScope(scope);
+    const ushort *cTokPtr = (const ushort *)compiledScope.constData();
+
     while (ushort tok = *tokPtr++) {
         if (inScope && (tok == TokAssign || tok == TokAppend || tok == TokAppendUnique)) {
             if (getLiteral(lastXpr, tokPtr - 1, tmp) && var == tmp) {
@@ -190,12 +222,15 @@ bool ProWriter::locateVarValues(const ushort *tokPtr,
             skipExpression(++tokPtr, lineNo);
             fresh = true;
         } else {
-            if (!inScope && tok == TokCondition && *tokPtr == TokBranch
-                && getLiteral(lastXpr, tokPtr - 1, tmp) && scope == tmp) {
+            if (!inScope && fresh
+                    && startsWithTokens(tokPtr - 1, tokPtrEnd, cTokPtr, cTokPtr + compiledScope.size())
+                    && *(tokPtr -1 + compiledScope.size()) == TokBranch) {
                 *scopeStart = lineNo - 1;
-                if (locateVarValues(tokPtr + 3, QString(), var, scopeStart, bestLine))
+                if (locateVarValues(tokPtr + compiledScope.size() + 2, tokPtrEnd,
+                                    QString(), var, scopeStart, bestLine))
                     return true;
             }
+
             const ushort *oTokPtr = skipToken(tok, tokPtr, lineNo);
             if (tok != TokLine) {
                 if (oTokPtr) {
@@ -241,7 +276,7 @@ void ProWriter::putVarValues(ProFile *profile, QStringList *lines,
 {
     QString indent = scope.isEmpty() ? QString() : QLatin1String("    ");
     int scopeStart = -1, lineNo;
-    if (locateVarValues(profile->tokPtr(), scope, var, &scopeStart, &lineNo)) {
+    if (locateVarValues(profile->tokPtr(), profile->tokPtrEnd(), scope, var, &scopeStart, &lineNo)) {
         if (flags & ReplaceValues) {
             // remove continuation lines with old values
             int lNo = skipContLines(lines, lineNo, false);
@@ -308,12 +343,15 @@ void ProWriter::putVarValues(ProFile *profile, QStringList *lines,
     }
 }
 
-void ProWriter::addFiles(ProFile *profile, QStringList *lines,
-    const QDir &proFileDir, const QStringList &values, const QString &var)
+void ProWriter::addFiles(ProFile *profile, QStringList *lines, const QStringList &values, const QString &var)
 {
     QStringList valuesToWrite;
+    QString prefixPwd;
+    QDir baseDir = QFileInfo(profile->fileName()).absoluteDir();
+    if (profile->fileName().endsWith(QLatin1String(".pri")))
+        prefixPwd = QLatin1String("$$PWD/");
     foreach (const QString &v, values)
-        valuesToWrite << proFileDir.relativeFilePath(v);
+        valuesToWrite << (prefixPwd + baseDir.relativeFilePath(v));
 
     putVarValues(profile, lines, valuesToWrite, var, AppendValues | MultiLine | AppendOperator);
 }
@@ -473,8 +511,25 @@ QStringList ProWriter::removeFiles(ProFile *profile, QStringList *lines,
     foreach (const QString &absoluteFilePath, values)
         valuesToFind << proFileDir.relativeFilePath(absoluteFilePath);
 
+    QStringList notYetChanged;
+    foreach (int i, removeVarValues(profile, lines, valuesToFind, vars))
+        notYetChanged.append(values.at(i));
+
+    if (!profile->fileName().endsWith(QLatin1String(".pri")))
+        return notYetChanged;
+
+    // If we didn't find them with a relative path to the .pro file
+    // maybe those files can be found via $$PWD/relativeToPriFile
+
+    valuesToFind.clear();
+    QDir baseDir = QFileInfo(profile->fileName()).absoluteDir();
+    QString prefixPwd = QLatin1String("$$PWD/");
+    foreach (const QString &absoluteFilePath, notYetChanged)
+        valuesToFind << (prefixPwd + baseDir.relativeFilePath(absoluteFilePath));
+
     QStringList notChanged;
     foreach (int i, removeVarValues(profile, lines, valuesToFind, vars))
-        notChanged.append(values.at(i));
+        notChanged.append(notYetChanged.at(i));
+
     return notChanged;
 }

@@ -100,7 +100,6 @@ public:
     virtual bool isPositioner() const;
     virtual bool isQuickItem() const;
     virtual bool isQuickWindow() const;
-    virtual bool isGraphical() const;
     virtual bool isLayoutable() const;
 
     virtual bool equalGraphicsItem(QGraphicsItem *item) const;
@@ -139,6 +138,7 @@ public:
     PropertyNameList propertyNames() const;
 
     virtual QList<ServerNodeInstance> childItems() const;
+    virtual QList<QQuickItem*> allItemsRecursive() const;
 
     void createDynamicProperty(const QString &PropertyName, const QString &typeName);
     void setDeleteHeldInstance(bool deleteInstance);
@@ -188,6 +188,8 @@ public:
     static QVariant fixResourcePaths(const QVariant &value);
 
     virtual void updateAllDirtyNodesRecursive();
+
+    virtual PropertyNameList ignoredProperties() const;
 
 protected:
     explicit ObjectNodeInstance(QObject *object);

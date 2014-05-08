@@ -65,14 +65,6 @@ Core::IEditor *PythonEditor::duplicate()
     return widget->editor();
 }
 
-/**
- * @returns Unique editor class identifier, that is Constants::C_PYTHONEDITOR_ID
- */
-Core::Id PythonEditor::id() const
-{
-    return Core::Id(Constants::C_PYTHONEDITOR_ID);
-}
-
 bool PythonEditor::open(QString *errorString,
                         const QString &fileName,
                         const QString &realFileName)

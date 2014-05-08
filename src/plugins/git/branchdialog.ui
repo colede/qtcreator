@@ -151,6 +151,13 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QPushButton" name="resetButton">
+            <property name="text">
+             <string>Reset</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
         <item>
@@ -166,7 +173,7 @@
         <item>
          <widget class="QPushButton" name="trackButton">
           <property name="toolTip">
-           <string>Sets current branch to track the selected one.</string>
+           <string>Set current branch to track the selected one.</string>
           </property>
           <property name="text">
            <string>&amp;Track</string>

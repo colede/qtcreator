@@ -34,6 +34,7 @@
 #include <utils/qtcassert.h>
 #include <QUrl>
 #include <QDebug>
+#include <algorithm>
 
 namespace QmlProfiler {
 
@@ -95,7 +96,8 @@ QString getInitialDetails(const QmlProfilerDataModel::QmlEventData &event)
             bool match = rewrite.exactMatch(details);
             if (match)
                 details = rewrite.cap(1) + QLatin1String(": ") + rewrite.cap(3);
-            if (details.startsWith(QLatin1String("file://")))
+            if (details.startsWith(QLatin1String("file://")) ||
+                    details.startsWith(QLatin1String("qrc:/")))
                 details = details.mid(details.lastIndexOf(QLatin1Char('/')) + 1);
         }
     }
@@ -103,11 +105,6 @@ QString getInitialDetails(const QmlProfilerDataModel::QmlEventData &event)
     return details;
 }
 
-
-bool compareStartTimes(const QmlProfilerDataModel::QmlEventData &t1, const QmlProfilerDataModel::QmlEventData &t2)
-{
-    return t1.startTime < t2.startTime;
-}
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -146,13 +143,19 @@ bool QmlProfilerDataModel::isEmpty() const
     return d->eventList.isEmpty();
 }
 
+inline static bool operator<(const QmlProfilerDataModel::QmlEventData &t1,
+                             const QmlProfilerDataModel::QmlEventData &t2)
+{
+    return t1.startTime < t2.startTime;
+}
+
 void QmlProfilerDataModel::complete()
 {
     Q_D(QmlProfilerDataModel);
     // post-processing
 
-    // sort events by start time
-    qSort(d->eventList.begin(), d->eventList.end(), compareStartTimes);
+    // sort events by start time, using above operator<
+    std::sort(d->eventList.begin(), d->eventList.end());
 
     // rewrite strings
     int n = d->eventList.count();

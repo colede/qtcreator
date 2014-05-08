@@ -442,7 +442,7 @@ void KitManager::deleteKit(Kit *k)
     delete k;
 }
 
-QString KitManager::uniqueKitName(const Kit *k, const QString name, const QList<Kit *> &allKits)
+QString KitManager::uniqueKitName(const Kit *k, const QString &name, const QList<Kit *> &allKits)
 {
     QStringList nameList;
     nameList << QString(); // Disallow empty kit names!
@@ -494,10 +494,12 @@ void KitManager::notifyAboutUpdate(ProjectExplorer::Kit *k)
 bool KitManager::registerKit(ProjectExplorer::Kit *k)
 {
     QTC_ASSERT(isLoaded(), return false);
-    QTC_ASSERT(k->id().isValid(), return false);
 
     if (!k)
         return true;
+
+    QTC_ASSERT(k->id().isValid(), return false);
+
     foreach (Kit *current, kits()) {
         if (k == current)
             return false;

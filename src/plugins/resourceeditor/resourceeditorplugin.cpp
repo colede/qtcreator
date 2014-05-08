@@ -48,6 +48,7 @@
 #include <projectexplorer/projectnodes.h>
 #include <extensionsystem/pluginmanager.h>
 
+#include <utils/parameteraction.h>
 #include <utils/qtcassert.h>
 
 #include <QtPlugin>
@@ -58,11 +59,17 @@
 #include <QMessageBox>
 #include <QFormLayout>
 #include <QDialogButtonBox>
+#include <QClipboard>
+#include <QApplication>
 
 using namespace ResourceEditor::Internal;
 
+static const char resourcePrefix[] = ":";
+static const char urlPrefix[] = "qrc://";
+
 class PrefixLangDialog : public QDialog
 {
+    Q_OBJECT
 public:
     PrefixLangDialog(const QString &title, const QString &prefix, const QString &lang, QWidget *parent)
         : QDialog(parent)
@@ -133,7 +140,7 @@ bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *err
     const Core::Context context(Constants::C_RESOURCEEDITOR);
     m_undoAction = new QAction(tr("&Undo"), this);
     m_redoAction = new QAction(tr("&Redo"), this);
-    m_refreshAction = new QAction(tr("Recheck existence of referenced files"), this);
+    m_refreshAction = new QAction(tr("Recheck Existence of Referenced Files"), this);
     Core::ActionManager::registerAction(m_undoAction, Core::Constants::UNDO, context);
     Core::ActionManager::registerAction(m_redoAction, Core::Constants::REDO, context);
     Core::ActionManager::registerAction(m_refreshAction, Constants::REFRESH, context);
@@ -144,6 +151,8 @@ bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *err
     Core::Context projectTreeContext(ProjectExplorer::Constants::C_PROJECT_TREE);
     Core::ActionContainer *folderContextMenu =
             Core::ActionManager::actionContainer(ProjectExplorer::Constants::M_FOLDERCONTEXT);
+    Core::ActionContainer *fileContextMenu =
+            Core::ActionManager::actionContainer(ProjectExplorer::Constants::M_FILECONTEXT);
     Core::Command *command = 0;
 
     m_addPrefix = new QAction(tr("Add Prefix..."), this);
@@ -161,12 +170,12 @@ bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *err
     folderContextMenu->addAction(command, ProjectExplorer::Constants::G_FOLDER_FILES);
     connect(m_removePrefix, SIGNAL(triggered()), this, SLOT(removePrefixContextMenu()));
 
-    m_renameResourceFile = new QAction(tr("Rename File"), this);
+    m_renameResourceFile = new QAction(tr("Rename..."), this);
     command = Core::ActionManager::registerAction(m_renameResourceFile, Constants::C_RENAME_FILE, projectTreeContext);
     folderContextMenu->addAction(command, ProjectExplorer::Constants::G_FOLDER_FILES);
     connect(m_renameResourceFile, SIGNAL(triggered()), this, SLOT(renameFileContextMenu()));
 
-    m_removeResourceFile = new QAction(tr("Remove File"), this);
+    m_removeResourceFile = new QAction(tr("Remove File..."), this);
     command = Core::ActionManager::registerAction(m_removeResourceFile, Constants::C_REMOVE_FILE, projectTreeContext);
     folderContextMenu->addAction(command, ProjectExplorer::Constants::G_FOLDER_FILES);
     connect(m_removeResourceFile, SIGNAL(triggered()), this, SLOT(removeFileContextMenu()));
@@ -180,6 +189,18 @@ bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *err
     command = Core::ActionManager::registerAction(m_openInTextEditor, Constants::C_OPEN_TEXT_EDITOR, projectTreeContext);
     folderContextMenu->addAction(command, ProjectExplorer::Constants::G_FOLDER_FILES);
     connect(m_openInTextEditor, SIGNAL(triggered()), this, SLOT(openTextEditorContextMenu()));
+
+    m_copyPath = new Utils::ParameterAction(QString(), tr("Copy path \"%1\""), Utils::ParameterAction::AlwaysEnabled, this);
+    command = Core::ActionManager::registerAction(m_copyPath, Constants::C_COPY_PATH, projectTreeContext);
+    command->setAttribute(Core::Command::CA_UpdateText);
+    fileContextMenu->addAction(command, ProjectExplorer::Constants::G_FILE_OTHER);
+    connect(m_copyPath, SIGNAL(triggered()), this, SLOT(copyPathContextMenu()));
+
+    m_copyUrl = new Utils::ParameterAction(QString(), tr("Copy url \"%1\""), Utils::ParameterAction::AlwaysEnabled, this);
+    command = Core::ActionManager::registerAction(m_copyUrl, Constants::C_COPY_URL, projectTreeContext);
+    command->setAttribute(Core::Command::CA_UpdateText);
+    fileContextMenu->addAction(command, ProjectExplorer::Constants::G_FILE_OTHER);
+    connect(m_copyUrl, SIGNAL(triggered()), this, SLOT(copyUrlContextMenu()));
 
     m_addPrefix->setEnabled(false);
     m_removePrefix->setEnabled(false);
@@ -249,7 +270,7 @@ void ResourceEditorPlugin::removeFileContextMenu()
     ProjectExplorer::FolderNode *parent = rfn->parentFolderNode();
     if (!parent->removeFiles(QStringList() << path))
         QMessageBox::warning(Core::ICore::mainWindow(),
-                             tr("File Removal failed"),
+                             tr("File Removal Failed"),
                              tr("Removing file %1 from the project failed.").arg(path));
 }
 
@@ -265,6 +286,18 @@ void ResourceEditorPlugin::openTextEditorContextMenu()
     ResourceTopLevelNode *topLevel = static_cast<ResourceTopLevelNode *>(ProjectExplorer::ProjectExplorerPlugin::instance()->currentNode());
     QString path = topLevel->path();
     Core::EditorManager::openEditor(path, Core::Constants::K_DEFAULT_TEXT_EDITOR_ID);
+}
+
+void ResourceEditorPlugin::copyPathContextMenu()
+{
+    ResourceFileNode *node = static_cast<ResourceFileNode *>(ProjectExplorer::ProjectExplorerPlugin::instance()->currentNode());
+    QApplication::clipboard()->setText(QLatin1String(resourcePrefix) + node->qrcPath());
+}
+
+void ResourceEditorPlugin::copyUrlContextMenu()
+{
+    ResourceFileNode *node = static_cast<ResourceFileNode *>(ProjectExplorer::ProjectExplorerPlugin::instance()->currentNode());
+    QApplication::clipboard()->setText(QLatin1String(urlPrefix) + node->qrcPath());
 }
 
 void ResourceEditorPlugin::renamePrefixContextMenu()
@@ -313,6 +346,18 @@ void ResourceEditorPlugin::updateContextActions(ProjectExplorer::Node *node, Pro
 
     m_renamePrefix->setEnabled(isResourceFolder);
     m_renamePrefix->setVisible(isResourceFolder);
+
+    bool isResourceFile = qobject_cast<ResourceFileNode *>(node);
+    m_copyPath->setEnabled(isResourceFile);
+    m_copyPath->setVisible(isResourceFile);
+    m_copyUrl->setEnabled(isResourceFile);
+    m_copyUrl->setVisible(isResourceFile);
+    if (isResourceFile) {
+        ResourceFileNode *fileNode = static_cast<ResourceFileNode *>(node);
+        QString qrcPath = fileNode->qrcPath();
+        m_copyPath->setParameter(QLatin1String(resourcePrefix) + qrcPath);
+        m_copyUrl->setParameter(QLatin1String(urlPrefix) + qrcPath);
+    }
 }
 
 void ResourceEditorPlugin::onUndoStackChanged(ResourceEditorW const *editor,
@@ -333,3 +378,5 @@ ResourceEditorW * ResourceEditorPlugin::currentEditor() const
 }
 
 Q_EXPORT_PLUGIN(ResourceEditorPlugin)
+
+#include "resourceeditorplugin.moc"

@@ -160,7 +160,9 @@ void AndroidDeployQtStep::ctor()
     m_verbose = false;
 
     // will be overwriten by settings if the user choose something different
-    m_buildTargetSdk = AndroidConfigurations::currentConfig().highestAndroidSdk();
+    SdkPlatform sdk = AndroidConfigurations::currentConfig().highestAndroidSdk();
+    if (sdk.apiLevel > 0)
+        m_buildTargetSdk = QLatin1String("android-") + QString::number(sdk.apiLevel);
 
     connect(project(), SIGNAL(proFilesEvaluated()),
            this, SLOT(updateInputFile()));
@@ -168,7 +170,7 @@ void AndroidDeployQtStep::ctor()
 
 bool AndroidDeployQtStep::init()
 {
-    if (AndroidManager::checkForQt51Files(project()->projectDirectory()))
+    if (AndroidManager::checkForQt51Files(project()->projectDirectory().toString()))
         emit addOutput(tr("Found old folder \"android\" in source directory. Qt 5.2 does not use that folder by default."), ErrorOutput);
 
     m_targetArch = AndroidManager::targetArch(target());
@@ -243,7 +245,7 @@ bool AndroidDeployQtStep::init()
 
     QString inputFile = node->singleVariableValue(QmakeProjectManager::AndroidDeploySettingsFile);
     if (inputFile.isEmpty()) { // should never happen
-        emit addOutput(tr("Internal Error: Unknown android deployment json file location"), BuildStep::ErrorMessageOutput);
+        emit addOutput(tr("Internal Error: Unknown Android deployment JSON file location."), BuildStep::ErrorMessageOutput);
         return false;
     }
 
@@ -527,9 +529,7 @@ QAbstractItemModel *AndroidDeployQtStep::keystoreCertificates()
         if (!m_keystorePasswd.length())
             return 0;
         params << m_keystorePasswd;
-        Utils::Environment env = Utils::Environment::systemEnvironment();
-        env.set(QLatin1String("LC_ALL"), QLatin1String("C"));
-        keytoolProc.setProcessEnvironment(env.toProcessEnvironment());
+        params << QLatin1String("-J-Duser.language=en");
         keytoolProc.start(AndroidConfigurations::currentConfig().keytoolPath().toString(), params);
         if (!keytoolProc.waitForStarted() || !keytoolProc.waitForFinished()) {
             QMessageBox::critical(0, tr("Error"),

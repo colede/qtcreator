@@ -39,6 +39,7 @@
 
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/messagemanager.h>
+#include <coreplugin/icore.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
@@ -273,7 +274,8 @@ Utils::FileName AndroidManager::dirPath(ProjectExplorer::Target *target)
     QtSupport::BaseQtVersion *qtVersion = QtSupport::QtKitInformation::qtVersion(target->kit());
     if (qtVersion && qtVersion->qtVersion() >= QtSupport::QtVersionNumber(5, 2, 0))
         return target->activeBuildConfiguration()->buildDirectory().appendPath(QLatin1String(Constants::ANDROID_BUILDDIRECTORY));
-    return Utils::FileName::fromString(target->project()->projectDirectory()).appendPath(AndroidDirName);
+    Utils::FileName dir = target->project()->projectDirectory();
+    return dir.appendPath(AndroidDirName);
 }
 
 Utils::FileName AndroidManager::manifestPath(ProjectExplorer::Target *target)
@@ -538,7 +540,7 @@ bool AndroidManager::createAndroidTemplatesIfNecessary(ProjectExplorer::Target *
     Utils::FileName javaSrcPath
             = Utils::FileName::fromString(version->qmakeProperty("QT_INSTALL_PREFIX"))
             .appendPath(QLatin1String("src/android/java"));
-    QDir projectDir(qmakeProject->projectDirectory());
+    QDir projectDir(qmakeProject->projectDirectory().toString());
     Utils::FileName androidPath = dirPath(target);
 
     QStringList m_ignoreFiles;
@@ -579,7 +581,7 @@ bool AndroidManager::createAndroidTemplatesIfNecessary(ProjectExplorer::Target *
     forceUpdate &= androidPath.toFileInfo().exists();
 
     if (!dirPath(target).toFileInfo().exists() && !projectDir.mkdir(AndroidDirName)) {
-        raiseError(tr("Error creating Android directory '%1'.").arg(AndroidDirName));
+        raiseError(tr("Error creating Android directory \"%1\".").arg(AndroidDirName));
         return false;
     }
 
@@ -612,7 +614,7 @@ bool AndroidManager::createAndroidTemplatesIfNecessary(ProjectExplorer::Target *
         if (qt->qtVersion() >= QtSupport::QtVersionNumber(5, 0, 0))
             minApiLevel = 9;
 
-    QStringList sdks = AndroidConfigurations::currentConfig().sdkTargets(minApiLevel);
+    QStringList sdks = AndroidConfig::apiLevelNamesFor(AndroidConfigurations::currentConfig().sdkTargets(minApiLevel));
     if (sdks.isEmpty()) {
         raiseError(tr("No Qt for Android SDKs were found.\nPlease install at least one SDK."));
         return false;
@@ -631,7 +633,7 @@ bool AndroidManager::createAndroidTemplatesIfNecessary(ProjectExplorer::Target *
     }
 
     if (forceUpdate)
-        QMessageBox::warning(0, tr("Warning"), tr("Android files have been updated automatically."));
+        QMessageBox::warning(Core::ICore::dialogParent(), tr("Warning"), tr("Android files have been updated automatically."));
 
     return true;
 }
@@ -1045,7 +1047,7 @@ bool AndroidManager::openXmlFile(QDomDocument &doc, const Utils::FileName &fileN
         return false;
 
     if (!doc.setContent(f.readAll())) {
-        raiseError(tr("Cannot parse '%1'.").arg(fileName.toUserOutput()));
+        raiseError(tr("Cannot parse \"%1\".").arg(fileName.toUserOutput()));
         return false;
     }
     return true;
@@ -1058,7 +1060,7 @@ bool AndroidManager::saveXmlFile(ProjectExplorer::Target *target, QDomDocument &
 
     QFile f(fileName.toString());
     if (!f.open(QIODevice::WriteOnly)) {
-        raiseError(tr("Cannot open '%1'.").arg(fileName.toUserOutput()));
+        raiseError(tr("Cannot open \"%1\".").arg(fileName.toUserOutput()));
         return false;
     }
     return f.write(doc.toByteArray(4)) >= 0;

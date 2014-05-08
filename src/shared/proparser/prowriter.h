@@ -60,14 +60,14 @@ public:
     static QList<int> removeVarValues(ProFile *profile, QStringList *lines,
         const QStringList &values, const QStringList &vars);
 
-    static void addFiles(ProFile *profile, QStringList *lines,
-         const QDir &proFileDir, const QStringList &filePaths, const QString &var);
+    static void addFiles(ProFile *profile, QStringList *lines, const QStringList &filePaths, const QString &var);
     static QStringList removeFiles(ProFile *profile, QStringList *lines,
         const QDir &proFileDir, const QStringList &filePaths, const QStringList &vars);
 
 private:
-    static bool locateVarValues(const ushort *tokPtr,
-        const QString &scope, const QString &var, int *scopeStart, int *bestLine);
+    static bool locateVarValues(const ushort *tokPtr, const ushort *tokPtrEnd,
+                                const QString &scope, const QString &var, int *scopeStart, int *bestLine);
+    static QString compileScope(const QString &scope);
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(ProWriter::PutFlags)

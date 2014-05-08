@@ -33,23 +33,24 @@
 #include "diffeditor_global.h"
 #include "differ.h"
 #include "diffeditorcontroller.h"
-
-#include <QTextEdit>
+#include <QWidget>
+#include <QTextCharFormat>
 
 namespace TextEditor { class FontSettings; }
 
 QT_BEGIN_NAMESPACE
 class QSplitter;
-class QTextCharFormat;
 QT_END_NAMESPACE
 
 
-
 namespace DiffEditor {
-
+class DiffEditorGuiController;
 class SideDiffEditorWidget;
+
+namespace Internal {
 class ChunkData;
 class FileData;
+}
 
 class DIFFEDITOR_EXPORT SideBySideDiffEditorWidget : public QWidget
 {
@@ -58,12 +59,8 @@ public:
     SideBySideDiffEditorWidget(QWidget *parent = 0);
     ~SideBySideDiffEditorWidget();
 
-    void setDiffEditorController(DiffEditorController *controller);
-    DiffEditorController *diffEditorController() const;
-
-#ifdef WITH_TESTS
-    static void testAssemblyRows();
-#endif // WITH_TESTS
+    void setDiffEditorGuiController(DiffEditorGuiController *controller);
+    DiffEditorGuiController *diffEditorGuiController() const;
 
 private slots:
     void clear(const QString &message = QString());
@@ -97,26 +94,22 @@ private:
     void handleWhitespaces(const QList<Diff> &input,
                            QList<Diff> *leftOutput,
                            QList<Diff> *rightOutput) const;
-    QList<QTextEdit::ExtraSelection> colorPositions(const QTextCharFormat &format,
-            QTextCursor &cursor,
-            const QMap<int, int> &positions) const;
-    void colorDiff(const QList<FileData> &fileDataList);
-    FileData calculateContextData(const ChunkData &originalData) const;
+    void colorDiff(const QList<Internal::FileData> &fileDataList);
     void showDiff();
     void synchronizeFoldings(SideDiffEditorWidget *source, SideDiffEditorWidget *destination);
     void jumpToOriginalFile(const QString &fileName, int lineNumber, int columnNumber);
 
+    DiffEditorGuiController *m_guiController;
     DiffEditorController *m_controller;
     SideDiffEditorWidget *m_leftEditor;
     SideDiffEditorWidget *m_rightEditor;
     QSplitter *m_splitter;
 
     QList<DiffList> m_diffList; // list of original outputs from differ
-    QList<ChunkData> m_originalChunkData; // one big chunk for every file, ignoreWhitespace taken into account
-    QList<FileData> m_contextFileData; // ultimate data to be shown, contextLinesNumber taken into account
+    QList<Internal::ChunkData> m_originalChunkData; // one big chunk for every file, ignoreWhitespace taken into account
+    QList<Internal::FileData> m_contextFileData; // ultimate data to be shown, contextLinesNumber taken into account
 
     bool m_foldingBlocker;
-    QString m_source;
 
     QTextCharFormat m_fileLineFormat;
     QTextCharFormat m_chunkLineFormat;

@@ -164,7 +164,7 @@ ProjectExplorer::FolderNode *QmlProjectNode::findOrCreateFolderByName(const QStr
     return findOrCreateFolderByName(components, components.length());
 }
 
-bool QmlProjectNode::hasBuildTargets() const
+bool QmlProjectNode::showInSimpleTree() const
 {
     return true;
 }
@@ -219,12 +219,6 @@ bool QmlProjectNode::deleteFiles(const QStringList & /*filePaths*/)
 bool QmlProjectNode::renameFile(const QString & /*filePath*/, const QString & /*newFilePath*/)
 {
     return true;
-}
-
-QList<ProjectExplorer::RunConfiguration *> QmlProjectNode::runConfigurationsFor(Node *node)
-{
-    Q_UNUSED(node)
-    return QList<ProjectExplorer::RunConfiguration *>();
 }
 
 } // namespace Internal

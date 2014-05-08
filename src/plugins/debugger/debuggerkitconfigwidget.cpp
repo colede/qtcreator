@@ -46,10 +46,6 @@
 #include <utils/persistentsettings.h>
 #include <utils/qtcassert.h>
 
-#ifdef Q_OS_WIN
-#include <utils/winutils.h>
-#endif
-
 #include <QApplication>
 #include <QComboBox>
 #include <QDirIterator>
@@ -60,12 +56,9 @@
 #include <QPushButton>
 #include <QStandardItem>
 #include <QStandardItemModel>
-#include <QTreeView>
 #include <QUuid>
 
 using namespace ProjectExplorer;
-using namespace Utils;
-using namespace Debugger::Internal;
 
 namespace Debugger {
 namespace Internal {
@@ -89,7 +82,7 @@ DebuggerKitConfigWidget::DebuggerKitConfigWidget(Kit *workingCopy, const KitInfo
     refresh();
     connect(m_comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(currentDebuggerChanged(int)));
 
-    m_manageButton = new QPushButton(tr("Manage..."));
+    m_manageButton = new QPushButton(KitConfigWidget::msgManage());
     m_manageButton->setContentsMargins(0, 0, 0, 0);
     connect(m_manageButton, SIGNAL(clicked()), this, SLOT(manageDebuggers()));
 

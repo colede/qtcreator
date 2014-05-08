@@ -16,6 +16,8 @@
 using namespace CppTools;
 using namespace CppTools::Internal;
 
+static const bool DumpFileNameWhileParsing = qgetenv("QTC_DUMP_FILENAME_WHILE_PARSING") == "1";
+
 namespace {
 
 static void parse(QFutureInterface<void> &future,
@@ -47,6 +49,8 @@ static void parse(QFutureInterface<void> &future,
     const QString conf = CppModelManagerInterface::configurationFileName();
     bool processingHeaders = false;
 
+    CppModelManager *cmm = CppModelManager::instance();
+    const QStringList fallbackIncludePaths = cmm->includePaths();
     for (int i = 0; i < files.size(); ++i) {
         if (future.isPaused())
             future.waitForResume();
@@ -65,6 +69,11 @@ static void parse(QFutureInterface<void> &future,
             processingHeaders = true;
         }
 
+        QList<ProjectPart::Ptr> parts = cmm->projectPart(fileName);
+        QStringList includePaths = parts.isEmpty()
+                ? fallbackIncludePaths
+                : parts.first()->includePaths;
+        preproc->setIncludePaths(includePaths);
         preproc->run(fileName);
 
         future.setProgressValue(files.size() - preproc->todo().size());
@@ -121,7 +130,7 @@ public:
                     if (index != -1) {
                         QString text = info.symbolName;
                         QString scope = info.symbolScope;
-                        if (info.type == ModelItemInfo::Method) {
+                        if (info.type == ModelItemInfo::Function) {
                             QString name;
                             info.unqualifiedNameAndScope(info.symbolName, &name, &scope);
                             text = name + info.symbolType;
@@ -164,7 +173,7 @@ BuiltinIndexingSupport::BuiltinIndexingSupport()
     : m_revision(0)
 {
     m_synchronizer.setCancelOnWait(true);
-    m_dumpFileNameWhileParsing = !qgetenv("QTCREATOR_DUMP_FILENAME_WHILE_PARSING").isNull();
+    m_dumpFileNameWhileParsing = DumpFileNameWhileParsing;
 }
 
 BuiltinIndexingSupport::~BuiltinIndexingSupport()
@@ -198,7 +207,7 @@ QFuture<void> BuiltinIndexingSupport::refreshSourceFiles(const QStringList &sour
     m_synchronizer.addFuture(result);
 
     if (mode == CppModelManagerInterface::ForcedProgressNotification || sourceFiles.count() > 1) {
-        Core::ProgressManager::addTask(result, QCoreApplication::translate("CppTools::Internal::BuiltinIndexingSupport", "Parsing"),
+        Core::ProgressManager::addTask(result, QCoreApplication::translate("CppTools::Internal::BuiltinIndexingSupport", "Parsing C/C++ Files"),
                                                 CppTools::Constants::TASK_INDEX);
     }
 

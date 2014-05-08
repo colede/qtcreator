@@ -48,8 +48,9 @@ namespace {
 
 const int ICON_SIZE = 22;
 
-struct WizardContainer
+class WizardContainer
 {
+public:
     WizardContainer() : wizard(0), wizardOption(0) {}
     WizardContainer(Core::IWizard *w, int i): wizard(w), wizardOption(i) {}
     Core::IWizard *wizard;
@@ -206,16 +207,17 @@ NewDialog::NewDialog(QWidget *parent) :
     m_ui->templateCategoryView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_ui->templateCategoryView->setItemDelegate(new FancyTopLevelDelegate);
 
+    m_ui->templatesView->setModel(m_filterProxyModel);
     m_ui->templatesView->setIconSize(QSize(ICON_SIZE, ICON_SIZE));
-
-    connect(m_ui->templateCategoryView, SIGNAL(clicked(QModelIndex)),
-        this, SLOT(currentCategoryChanged(QModelIndex)));
-    connect(m_ui->templatesView, SIGNAL(clicked(QModelIndex)),
-        this, SLOT(currentItemChanged(QModelIndex)));
 
     connect(m_ui->templateCategoryView->selectionModel(),
             SIGNAL(currentChanged(QModelIndex,QModelIndex)),
             this, SLOT(currentCategoryChanged(QModelIndex)));
+
+    connect(m_ui->templatesView->selectionModel(),
+            SIGNAL(currentChanged(QModelIndex,QModelIndex)),
+            this, SLOT(currentItemChanged(QModelIndex)));
+
     connect(m_ui->templatesView,
             SIGNAL(doubleClicked(QModelIndex)),
             this, SLOT(okButtonClicked()));
@@ -236,11 +238,7 @@ bool wizardLessThan(const IWizard *w1, const IWizard *w2)
 
 void NewDialog::setWizards(QList<IWizard*> wizards)
 {
-    typedef QMap<QString, QStandardItem *> CategoryItemMap;
-
     qStableSort(wizards.begin(), wizards.end(), wizardLessThan);
-
-    CategoryItemMap platformMap;
 
     m_model->clear();
     QStandardItem *parentItem = m_model->invisibleRootItem();
@@ -335,12 +333,6 @@ QString NewDialog::selectedPlatform() const
     return m_ui->comboBox->itemData(index).toString();
 }
 
-int NewDialog::selectedWizardOption() const
-{
-    QStandardItem *item = m_model->itemFromIndex(m_ui->templatesView->currentIndex());
-    return item->data(Qt::UserRole).value<WizardContainer>().wizardOption;
-}
-
 NewDialog::~NewDialog()
 {
     delete m_ui;
@@ -352,17 +344,17 @@ IWizard *NewDialog::currentWizard() const
     return wizardOfItem(m_model->itemFromIndex(index));
 }
 
-void NewDialog::addItem(QStandardItem *topLEvelCategoryItem, IWizard *wizard)
+void NewDialog::addItem(QStandardItem *topLevelCategoryItem, IWizard *wizard)
 {
     const QString categoryName = wizard->category();
     QStandardItem *categoryItem = 0;
-    for (int i = 0; i < topLEvelCategoryItem->rowCount(); i++) {
-        if (topLEvelCategoryItem->child(i, 0)->data(Qt::UserRole) == categoryName)
-            categoryItem = topLEvelCategoryItem->child(i, 0);
+    for (int i = 0; i < topLevelCategoryItem->rowCount(); i++) {
+        if (topLevelCategoryItem->child(i, 0)->data(Qt::UserRole) == categoryName)
+            categoryItem = topLevelCategoryItem->child(i, 0);
     }
     if (!categoryItem) {
         categoryItem = new QStandardItem();
-        topLEvelCategoryItem->appendRow(categoryItem);
+        topLevelCategoryItem->appendRow(categoryItem);
         m_categoryItems.append(categoryItem);
         categoryItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
         categoryItem->setText(QLatin1String("  ") + wizard->displayCategory());
@@ -387,16 +379,11 @@ void NewDialog::addItem(QStandardItem *topLEvelCategoryItem, IWizard *wizard)
 void NewDialog::currentCategoryChanged(const QModelIndex &index)
 {
     if (index.parent() != m_model->invisibleRootItem()->index()) {
-        m_ui->templatesView->setModel(m_filterProxyModel);
         QModelIndex sourceIndex = m_twoLevelProxyModel->mapToSource(index);
         sourceIndex = m_filterProxyModel->mapFromSource(sourceIndex);
         m_ui->templatesView->setRootIndex(sourceIndex);
         // Focus the first item by default
         m_ui->templatesView->setCurrentIndex(m_ui->templatesView->rootIndex().child(0,0));
-
-        connect(m_ui->templatesView->selectionModel(),
-                SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                this, SLOT(currentItemChanged(QModelIndex)));
     }
 }
 
@@ -406,9 +393,9 @@ void NewDialog::currentItemChanged(const QModelIndex &index)
     QStandardItem* cat = (m_model->itemFromIndex(sourceIndex));
     if (const IWizard *wizard = wizardOfItem(cat)) {
         QString desciption = wizard->description();
-        QStringList displayNamesForSupporttedPlatforms;
+        QStringList displayNamesForSupportedPlatforms;
         foreach (const QString &platform, wizard->supportedPlatforms())
-            displayNamesForSupporttedPlatforms << IWizard::displayNameForPlatform(platform);
+            displayNamesForSupportedPlatforms << IWizard::displayNameForPlatform(platform);
         if (!Qt::mightBeRichText(desciption))
             desciption.replace(QLatin1Char('\n'), QLatin1String("<br>"));
         desciption += QLatin1String("<br><br><b>");
@@ -417,7 +404,7 @@ void NewDialog::currentItemChanged(const QModelIndex &index)
         else
             desciption += tr("Supported Platforms")
                     + QLatin1String("</b>: <tt>")
-                    + displayNamesForSupporttedPlatforms.join(QLatin1String(" "))
+                    + displayNamesForSupportedPlatforms.join(QLatin1String(" "))
                     + QLatin1String("</tt>");
 
         m_ui->templateDescription->setHtml(desciption);

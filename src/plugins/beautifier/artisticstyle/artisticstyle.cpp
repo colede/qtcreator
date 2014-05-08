@@ -43,6 +43,7 @@
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
+#include <coreplugin/idocument.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/project.h>
@@ -69,9 +70,9 @@ ArtisticStyle::~ArtisticStyle()
 bool ArtisticStyle::initialize()
 {
     Core::ActionContainer *menu = Core::ActionManager::createMenu(Constants::ArtisticStyle::MENU_ID);
-    menu->menu()->setTitle(QLatin1String("Artistic Style"));
+    menu->menu()->setTitle(QLatin1String(Constants::ArtisticStyle::DISPLAY_NAME));
 
-    m_formatFile = new QAction(tr("Format Current File"), this);
+    m_formatFile = new QAction(BeautifierPlugin::msgFormatCurrentFile(), this);
     Core::Command *cmd
             = Core::ActionManager::registerAction(m_formatFile,
                                                   Constants::ArtisticStyle::ACTION_FORMATFILE,
@@ -86,7 +87,7 @@ bool ArtisticStyle::initialize()
 
 void ArtisticStyle::updateActions(Core::IEditor *editor)
 {
-    m_formatFile->setEnabled(editor && editor->id() == CppEditor::Constants::CPPEDITOR_ID);
+    m_formatFile->setEnabled(editor && editor->document()->id() == CppEditor::Constants::CPPEDITOR_ID);
 }
 
 QList<QObject *> ArtisticStyle::autoReleaseObjects()
@@ -117,11 +118,12 @@ void ArtisticStyle::formatFile()
     }
 
     if (cfgFileName.isEmpty() && m_settings->useHomeFile()) {
-        QString file = QDir::home().filePath(QLatin1String(".astylerc"));
+        const QDir homeDirectory = QDir::home();
+        QString file = homeDirectory.filePath(QLatin1String(".astylerc"));
         if (QFile::exists(file)) {
             cfgFileName = file;
         } else {
-            file = QDir::home().filePath(QLatin1String("astylerc"));
+            file = homeDirectory.filePath(QLatin1String("astylerc"));
             if (QFile::exists(file))
                 cfgFileName = file;
         }
@@ -131,7 +133,8 @@ void ArtisticStyle::formatFile()
         cfgFileName = m_settings->styleFileName(m_settings->customStyle());
 
     if (cfgFileName.isEmpty()) {
-        BeautifierPlugin::showError(tr("Could not get configuration file for Artistic Style."));
+        BeautifierPlugin::showError(BeautifierPlugin::msgCannotGetConfigurationFile(
+                                        QLatin1String(Constants::ArtisticStyle::DISPLAY_NAME)));
     } else {
         BeautifierPlugin::formatCurrentFile(QStringList()
                                             << m_settings->command()

@@ -63,6 +63,7 @@ NdkPathChooser::NdkPathChooser(Mode mode, QWidget *parent)
     : Utils::PathChooser(parent)
     , m_mode(mode)
 {
+    setHistoryCompleter(QLatin1String("Qnx.NdkPath.History"));
     if (m_mode == NdkPathChooser::InstallMode) {
         setExpectedKind(Utils::PathChooser::Directory);
     } else {
@@ -397,23 +398,23 @@ BlackBerryInstallWizardProcessPage::~BlackBerryInstallWizardProcessPage()
     delete m_ui;
 }
 
-void BlackBerryInstallWizardProcessPage::initializePage()
+static QString msgTarget(BlackBerryInstallerDataHandler::Target t)
 {
-    QString target;
-    switch (m_data.installTarget) {
+    switch (t) {
     case BlackBerryInstallerDataHandler::ApiLevel:
-        target = tr("API level version: ");
-        break;
+        return BlackBerryInstallWizardProcessPage::tr("API level");
     case BlackBerryInstallerDataHandler::Simulator:
-        target = tr("simulator version: ");
-        break;
+        return BlackBerryInstallWizardProcessPage::tr("simulator");
     case BlackBerryInstallerDataHandler::Runtime:
-        target = tr("runtime version: ");
-        break;
+        return BlackBerryInstallWizardProcessPage::tr("runtime");
     default:
         break;
     }
+    return QString();
+}
 
+void BlackBerryInstallWizardProcessPage::initializePage()
+{
     if (m_data.mode == BlackBerryInstallerDataHandler::UninstallMode) {
         if (m_data.version.isEmpty()) {
             wizard()->next();
@@ -428,9 +429,11 @@ void BlackBerryInstallWizardProcessPage::initializePage()
             }
         }
 
-        m_ui->label->setText(tr("Uninstalling ") + target + m_data.version);
+        m_ui->label->setText(tr("Uninstalling %1 version: %2")
+                             .arg(msgTarget(m_data.installTarget), m_data.version));
     } else {
-        m_ui->label->setText(tr("Installing ") + target + m_data.version);
+        m_ui->label->setText(tr("Installing %1 version: %2")
+                             .arg(msgTarget(m_data.installTarget), m_data.version));
     }
     // m_targetProcess could be running
     if (m_targetProcess->state() == QProcess::Running) {
@@ -482,7 +485,7 @@ void BlackBerryInstallWizardProcessPage::processTarget()
 
     // deactivate target if activated before uninstalling
     if (m_data.mode == BlackBerryInstallerDataHandler::UninstallMode) {
-        foreach (BlackBerryApiLevelConfiguration *config, BlackBerryConfigurationManager::instance().apiLevels()) {
+        foreach (BlackBerryApiLevelConfiguration *config, BlackBerryConfigurationManager::instance()->apiLevels()) {
             if (m_data.target.contains((config->targetName())) && config->isActive()) {
                 config->deactivate();
                 break;
@@ -518,13 +521,13 @@ void BlackBerryInstallWizardFinalPage::initializePage()
     layout->addWidget(label);
 
     if (m_data.mode == BlackBerryInstallerDataHandler::ManuallMode) {
-        BlackBerryConfigurationManager  &configManager = BlackBerryConfigurationManager::instance();
+        BlackBerryConfigurationManager *configManager = BlackBerryConfigurationManager::instance();
         BlackBerryApiLevelConfiguration *config =
-                configManager.apiLevelFromEnvFile(Utils::FileName::fromString(m_data.ndkPath));
+                configManager->apiLevelFromEnvFile(Utils::FileName::fromString(m_data.ndkPath));
 
         if (!config) {
             config = new BlackBerryApiLevelConfiguration(Utils::FileName::fromString(m_data.ndkPath));
-            if (!configManager.addApiLevel(config)) {
+            if (!configManager->addApiLevel(config)) {
                 delete config;
                 // TODO: more explicit error message!
                 label->setText(tr("An error has occurred while adding target from:\n %1").arg(m_data.ndkPath));
@@ -541,30 +544,17 @@ void BlackBerryInstallWizardFinalPage::initializePage()
     }
 
     QString message;
-    QString target;
-    switch (m_data.installTarget) {
-    case BlackBerryInstallerDataHandler::ApiLevel:
-        target = tr("API level version: ");
-        break;
-    case BlackBerryInstallerDataHandler::Simulator:
-        target = tr("simulator version: ");
-        break;
-    case BlackBerryInstallerDataHandler::Runtime:
-        target = tr("runtime version: ");
-        break;
-    default:
-        break;
-    }
+    const QString target = msgTarget(m_data.installTarget);
 
     if (m_data.exitCode == 0 && m_data.exitStatus == QProcess::NormalExit) {
         message = m_data.mode == BlackBerryInstallerDataHandler::UninstallMode ?
-            tr("Finished uninstalling %1:\n %2").arg(target, m_data.version) :
-            tr("Finished installing %1:\n %2").arg(target, m_data.version);
+            tr("Finished uninstalling %1 version:\n %2").arg(target, m_data.version) :
+            tr("Finished installing %1 version:\n %2").arg(target, m_data.version);
         emit done();
     } else {
         message = m_data.mode == BlackBerryInstallerDataHandler::UninstallMode ?
-            tr("An error has occurred while uninstalling %1:\n %2").arg(target, m_data.version) :
-            tr("An error has occurred while installing %1:\n %2").arg(target, m_data.version);
+            tr("An error has occurred while uninstalling %1 version:\n %2").arg(target, m_data.version) :
+            tr("An error has occurred while installing %1 version:\n %2").arg(target, m_data.version);
     }
     label->setText(message);
 }

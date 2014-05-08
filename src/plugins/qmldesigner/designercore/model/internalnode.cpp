@@ -155,6 +155,11 @@ void InternalNode::setId(const QString& id)
     m_id = id;
 }
 
+bool InternalNode::hasId() const
+{
+    return !m_id.isEmpty();
+}
+
 
 uint qHash(const InternalNodePointer& node)
 {
@@ -330,7 +335,7 @@ QList<InternalNode::Pointer> InternalNode::allDirectSubNodes() const
 {
     QList<InternalNode::Pointer> nodeList;
     foreach (const InternalNodeAbstractProperty::Pointer &property, nodeAbstractPropertyList()) {
-        nodeList.append(property->allDirectSubNodes());
+        nodeList.append(property->directSubNodes());
     }
 
     return nodeList;

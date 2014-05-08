@@ -1388,7 +1388,7 @@ void ConvertCStringToNSString::match(const CppQuickFixInterface &interface,
 {
     CppRefactoringFilePtr file = interface->currentFile();
 
-    if (!interface->editor()->isObjCEnabled())
+    if (!interface->editor()->cppEditorDocument()->isObjCEnabled())
         return;
 
     WrapStringLiteral::Type type = WrapStringLiteral::TypeNone;
@@ -2693,14 +2693,29 @@ void InsertDefFromDecl::match(const CppQuickFixInterface &interface, QuickFixOpe
                                 // be used in perform() to get consistent insert positions.
                                 foreach (const InsertionLocation &location,
                                          locator.methodDefinition(decl, false, QString())) {
-                                    if (location.isValid()) {
+                                    if (!location.isValid())
+                                        continue;
+
+                                    const QString fileName = location.fileName();
+                                    if (ProjectFile::isHeader(ProjectFile::classify(fileName))) {
+                                        const QString source
+                                                = CppTools::correspondingHeaderOrSource(fileName);
+                                        if (!source.isEmpty()) {
+                                            op = new InsertDefOperation(interface, decl, declAST,
+                                                                        InsertionLocation(),
+                                                                        DefPosImplementationFile,
+                                                                        source);
+                                        }
+                                    } else {
                                         op = new InsertDefOperation(interface, decl, declAST,
                                                                     InsertionLocation(),
                                                                     DefPosImplementationFile,
-                                                                    location.fileName());
-                                        result.append(CppQuickFixOperation::Ptr(op));
-                                        break;
+                                                                    fileName);
                                     }
+
+                                    if (op)
+                                        result.append(CppQuickFixOperation::Ptr(op));
+                                    break;
                                 }
                             }
 

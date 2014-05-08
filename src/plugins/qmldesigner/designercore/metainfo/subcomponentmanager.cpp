@@ -230,7 +230,7 @@ void SubComponentManager::parseDirectories()
 
 void SubComponentManager::parseDirectory(const QString &canonicalDirPath, bool addToLibrary, const TypeName& qualification)
 {
-    if (!model()->rewriterView())
+    if (!model() || !model()->rewriterView())
         return;
 
     QDir designerDir(canonicalDirPath + Constants::QML_DESIGNER_SUBFOLDER);
@@ -395,7 +395,6 @@ void SubComponentManager::registerQmlFile(const QFileInfo &fileInfo, const QStri
         itemLibraryEntry.setName(baseComponentName);
         itemLibraryEntry.setCategory("QML Components");
         if (!qualifier.isEmpty()) {
-            itemLibraryEntry.setForceImport(true);
             itemLibraryEntry.setRequiredImport(fixedQualifier);
         }
 

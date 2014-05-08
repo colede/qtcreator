@@ -44,6 +44,7 @@
 #include <projectexplorer/toolchain.h>
 
 #include <coreplugin/icore.h>
+#include <coreplugin/icontext.h>
 #include <qtsupport/debugginghelperbuildtask.h>
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtversionmanager.h>
@@ -122,9 +123,9 @@ QString QMakeStep::allArguments(bool shorted)
     if (bc->subNodeBuild())
         arguments << QDir::toNativeSeparators(bc->subNodeBuild()->path());
     else if (shorted)
-        arguments << QDir::toNativeSeparators(QFileInfo(project()->projectFilePath()).fileName());
+        arguments << project()->projectFilePath().toFileInfo().fileName();
     else
-        arguments << QDir::toNativeSeparators(project()->projectFilePath());
+        arguments << project()->projectFilePath().toUserOutput();
 
     arguments << QLatin1String("-r");
     bool userProvidedMkspec = false;
@@ -273,8 +274,21 @@ bool QMakeStep::init()
         node = qt4bc->subNodeBuild();
     QString proFile = node->path();
 
-    m_tasks = qtVersion->reportIssues(proFile, workingDirectory);
-    qSort(m_tasks);
+    QList<ProjectExplorer::Task> tasks = qtVersion->reportIssues(proFile, workingDirectory);
+    qSort(tasks);
+
+    if (!tasks.isEmpty()) {
+        bool canContinue = true;
+        foreach (const ProjectExplorer::Task &t, tasks) {
+            addTask(t);
+            if (t.type == Task::Error)
+                canContinue = false;
+        }
+        if (!canContinue) {
+            emit addOutput(tr("Configuration is faulty, please check the Issues view for details."), BuildStep::MessageOutput);
+            return false;
+        }
+    }
 
     m_scriptTemplate = node->projectType() == ScriptTemplate;
 
@@ -285,20 +299,6 @@ void QMakeStep::run(QFutureInterface<bool> &fi)
 {
     if (m_scriptTemplate) {
         fi.reportResult(true);
-        return;
-    }
-
-    // Warn on common error conditions:
-    bool canContinue = true;
-    foreach (const ProjectExplorer::Task &t, m_tasks) {
-        addTask(t);
-        if (t.type == Task::Error)
-            canContinue = false;
-    }
-    if (!canContinue) {
-        emit addOutput(tr("Configuration is faulty, please check the Issues view for details."), BuildStep::MessageOutput);
-        fi.reportResult(false);
-        emit finished();
         return;
     }
 
@@ -366,6 +366,10 @@ bool QMakeStep::linkQmlDebuggingLibrary() const
     if (m_linkQmlDebuggingLibrary == DoLink)
         return true;
     if (m_linkQmlDebuggingLibrary == DoNotLink)
+        return false;
+
+    const Core::Context languages = project()->projectLanguages();
+    if (!languages.contains(ProjectExplorer::Constants::LANG_QMLJS))
         return false;
     return (qmakeBuildConfiguration()->buildType() & BuildConfiguration::Debug);
 }

@@ -462,7 +462,7 @@ void PerforcePlugin::revertCurrentFile()
 
     bool doNotRevert = false;
     if (!result.stdOut.isEmpty())
-        doNotRevert = (QMessageBox::warning(0, tr("p4 revert"),
+        doNotRevert = (QMessageBox::warning(Core::ICore::dialogParent(), tr("p4 revert"),
                                             tr("The file has been changed. Do you want to revert it?"),
                                             QMessageBox::Yes, QMessageBox::No) == QMessageBox::No);
     if (doNotRevert)
@@ -514,7 +514,7 @@ void PerforcePlugin::revertCurrentProject()
     QTC_ASSERT(state.hasProject(), return);
 
     const QString msg = tr("Do you want to revert all changes to the project \"%1\"?").arg(state.currentProjectName());
-    if (QMessageBox::warning(0, tr("p4 revert"), msg, QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
+    if (QMessageBox::warning(Core::ICore::dialogParent(), tr("p4 revert"), msg, QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
         return;
     revertProject(state.currentProjectTopLevel(), perforceRelativeProjectDirectory(state), false);
 }
@@ -719,7 +719,6 @@ void PerforcePlugin::annotate(const QString &workingDir,
     if (!result.error) {
         if (lineNumber < 1)
             lineNumber = VcsBase::VcsBaseEditorWidget::lineNumberOfCurrentEditor();
-        const QFileInfo fi(fileName);
         Core::IEditor *ed = showOutputInEditor(tr("p4 annotate %1").arg(id),
                                                result.stdOut, VcsBase::AnnotateOutput,
                                                source, codec);
@@ -960,7 +959,7 @@ PerforcePlugin::createTemporaryArgumentFile(const QStringList &extraArgs,
 
 static inline QString msgNotStarted(const QString &cmd)
 {
-    return PerforcePlugin::tr("Could not start perforce '%1'. Please check your settings in the preferences.").arg(cmd);
+    return PerforcePlugin::tr("Could not start perforce \"%1\". Please check your settings in the preferences.").arg(cmd);
 }
 
 static inline QString msgTimeout(int timeOut)
@@ -1170,10 +1169,11 @@ PerforceResponse PerforcePlugin::runP4Cmd(const QString &workingDir,
     return response;
 }
 
-Core::IEditor *PerforcePlugin::showOutputInEditor(const QString &title, const QString output,
-                                                   int editorType,
-                                                   const QString &source,
-                                                   QTextCodec *codec)
+Core::IEditor *PerforcePlugin::showOutputInEditor(const QString &title,
+                                                  const QString &output,
+                                                  int editorType,
+                                                  const QString &source,
+                                                  QTextCodec *codec)
 {
     const VcsBase::VcsBaseEditorParameters *params = findType(editorType);
     QTC_ASSERT(params, return 0);
@@ -1182,7 +1182,10 @@ Core::IEditor *PerforcePlugin::showOutputInEditor(const QString &title, const QS
         qDebug() << "PerforcePlugin::showOutputInEditor" << title << id.name()
                  <<  "Size= " << output.size() <<  " Type=" << editorType << debugCodec(codec);
     QString s = title;
-    Core::IEditor *editor = Core::EditorManager::openEditorWithContents(id, &s, output.toUtf8());
+    Core::IEditor *editor
+            = Core::EditorManager::openEditorWithContents(id, &s, output.toUtf8(),
+                                                          (Core::EditorManager::OpenInOtherSplit
+                                                           | Core::EditorManager::NoNewSplits));
     connect(editor, SIGNAL(annotateRevisionRequested(QString,QString,QString,int)),
             this, SLOT(vcsAnnotate(QString,QString,QString,int)));
     PerforceEditor *e = qobject_cast<PerforceEditor*>(editor->widget());
@@ -1194,7 +1197,6 @@ Core::IEditor *PerforcePlugin::showOutputInEditor(const QString &title, const QS
     e->baseTextDocument()->setSuggestedFileName(s);
     if (codec)
         e->setCodec(codec);
-    Core::EditorManager::activateEditor(editor);
     return editor;
 }
 

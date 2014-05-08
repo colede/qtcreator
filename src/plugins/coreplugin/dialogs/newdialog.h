@@ -64,7 +64,6 @@ public:
 
     Core::IWizard *showDialog();
     QString selectedPlatform() const;
-    int selectedWizardOption() const;
 
 private slots:
     void currentCategoryChanged(const QModelIndex &);
@@ -75,7 +74,7 @@ private slots:
 
 private:
     Core::IWizard *currentWizard() const;
-    void addItem(QStandardItem *topLEvelCategoryItem, IWizard *wizard);
+    void addItem(QStandardItem *topLevelCategoryItem, IWizard *wizard);
 
     Ui::NewDialog *m_ui;
     QStandardItemModel *m_model;

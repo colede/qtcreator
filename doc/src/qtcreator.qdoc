@@ -33,7 +33,7 @@
     \QC provides a cross-platform, complete integrated development environment
     (IDE) for application developers to create applications for multiple desktop
     and mobile device platforms, such as \l{Connecting Android Devices}{Android}
-    and \l{Connecting iOS Devices}{iOS}. It is available for Linux, Mac OS X and
+    and \l{Connecting iOS Devices}{iOS}. It is available for Linux, OS X and
     Windows
     operating systems. For more information, see \l{Supported Platforms}.
 
@@ -133,7 +133,7 @@
             \list
                 \li \l{Creating a Qt Quick Application}
                 \li \l{Creating a Qt Widget Based Application}
-                \li \l{Creating an Android Application}
+                \li \l{Creating a Mobile Application}
             \endlist
         \endlist
         \li \l{Managing Projects}
@@ -200,6 +200,7 @@
                 \li \l{Searching with the Locator}
             \endlist
             \li \l{Refactoring}
+            \li \l{Beautifying Source Code}
             \li \l{Configuring the Editor}
             \list
                 \li \l{Specifying Text Editor Settings}
@@ -216,7 +217,7 @@
                 \li \l{Deploying Applications to Android Devices}
                 \li \l{Deploying Applications to BlackBerry 10 Devices}
                 \li \l{Deploying Applications to Embedded Linux Devices}
-                \li \l{Deploying Applications to QNX Devices}
+                \li \l{Deploying Applications to QNX Neutrino Devices}
             \endlist
             \li \l{Connecting Mobile Devices}
             \list
@@ -226,6 +227,7 @@
                 \li \l{Connecting Embedded Linux Devices}
                 \li \l{Connecting iOS Devices}
                 \li \l{Connecting QNX Devices}
+                \li \l{Connecting Windows Runtime Devices}
             \endlist
             \li \l{Customizing the Build Process}
         \endlist

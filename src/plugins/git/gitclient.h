@@ -206,7 +206,7 @@ public:
     bool synchronousForEachRefCmd(const QString &workingDirectory, QStringList args,
                                QString *output, QString *errorMessage = 0);
     bool synchronousRemoteCmd(const QString &workingDirectory, QStringList remoteArgs,
-                              QString *output, QString *errorMessage);
+                              QString *output, QString *errorMessage, bool silent = false);
 
     QMap<QString,QString> synchronousRemotesList(const QString &workingDirectory,
                                                  QString *errorMessage = 0);
@@ -281,10 +281,9 @@ public:
                               const QString &messge, QString *name,
                               QString *errorMessage = 0);
 
-    QString readConfig(const QString &workingDirectory, const QStringList &configVar) const;
-
     QString readConfigValue(const QString &workingDirectory, const QString &configVar) const;
 
+    QTextCodec *encoding(const QString &workingDirectory, const QByteArray &configVar) const;
     bool getCommitData(const QString &workingDirectory, QString *commitTemplate,
                        CommitData &commitData, QString *errorMessage);
 
@@ -304,9 +303,7 @@ public:
     CommandInProgress checkCommandInProgress(const QString &workingDirectory);
     QString commandInProgressDescription(const QString &workingDirectory);
 
-    void continueCommandIfNeeded(const QString &workingDirectory);
-    void continuePreviousGitCommand(const QString &workingDirectory, const QString &msgBoxTitle, QString msgBoxText,
-                                    const QString &buttonName, const QString &gitCommand, bool requireChanges = true);
+    void continueCommandIfNeeded(const QString &workingDirectory, bool allowContinue = true);
 
     QString extendedShowDescription(const QString &workingDirectory, const QString &text);
 
@@ -346,6 +343,7 @@ private slots:
     void fetchFinished(const QVariant &cookie);
 
 private:
+    QByteArray readConfigBytes(const QString &workingDirectory, const QString &configVar) const;
     QTextCodec *getSourceCodec(const QString &file) const;
     VcsBase::VcsBaseEditorWidget *findExistingVCSEditor(const char *registerDynamicProperty,
                                                         const QString &dynamicPropertyValue) const;
@@ -358,7 +356,7 @@ private:
                                             const char *registerDynamicProperty,
                                             const QString &dynamicPropertyValue,
                                             VcsBase::VcsBaseEditorParameterWidget *configWidget) const;
-    DiffEditor::DiffEditorDocument *createDiffEditor(const QString documentId,
+    DiffEditor::DiffEditorDocument *createDiffEditor(const QString &documentId,
                                              const QString &source,
                                              const QString &title) const;
 
@@ -403,6 +401,16 @@ private:
                          const QString &fileName,
                          const QString &gitBinDirectory);
     bool cleanList(const QString &workingDirectory, const QString &flag, QStringList *files, QString *errorMessage);
+
+    enum ContinueCommandMode {
+        ContinueOnly,
+        SkipOnly,
+        SkipIfNoChanges
+    };
+
+    void continuePreviousGitCommand(const QString &workingDirectory, const QString &msgBoxTitle,
+                                    QString msgBoxText, const QString &buttonName,
+                                    const QString &gitCommand, ContinueCommandMode continueMode);
 
     mutable QString m_gitVersionForBinary;
     mutable unsigned m_cachedGitVersion;

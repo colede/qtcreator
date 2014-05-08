@@ -95,7 +95,7 @@ bool BlackBerryCreatePackageStep::init()
 
     const QString packageCmd = target()->activeBuildConfiguration()->environment().searchInPath(QLatin1String(PACKAGER_CMD));
     if (packageCmd.isEmpty()) {
-        raiseError(tr("Could not find packager command '%1' in the build environment")
+        raiseError(tr("Could not find packager command \"%1\" in the build environment.")
                    .arg(QLatin1String(PACKAGER_CMD)));
         return false;
     }
@@ -105,18 +105,18 @@ bool BlackBerryCreatePackageStep::init()
 
     QList<BarPackageDeployInformation> packagesToDeploy = deployConfig->deploymentInfo()->enabledPackages();
     if (packagesToDeploy.isEmpty()) {
-        raiseError(tr("No packages enabled for deployment"));
+        raiseError(tr("No packages enabled for deployment."));
         return false;
     }
 
     foreach (const BarPackageDeployInformation &info, packagesToDeploy) {
         if (info.appDescriptorPath().isEmpty()) {
-            raiseError(tr("Application descriptor file not specified, please check deployment settings"));
+            raiseError(tr("BAR application descriptor file not specified. Check deployment settings."));
             return false;
         }
 
         if (info.packagePath().isEmpty()) {
-            raiseError(tr("No package specified, please check deployment settings"));
+            raiseError(tr("No package specified. Check deployment settings."));
             return false;
         }
 
@@ -124,7 +124,7 @@ bool BlackBerryCreatePackageStep::init()
         QDir dir(buildDir);
         if (!dir.exists()) {
             if (!dir.mkpath(buildDir)) {
-                raiseError(tr("Could not create build directory '%1'").arg(buildDir));
+                raiseError(tr("Could not create build directory \"%1\".").arg(buildDir));
                 return false;
             }
         }
@@ -133,7 +133,6 @@ bool BlackBerryCreatePackageStep::init()
         if (!prepareAppDescriptorFile(info.appDescriptorPath(), preparedFilePath))
             // If there is an error, prepareAppDescriptorFile() will raise it
             return false;
-
 
         QStringList args;
         if (m_packageMode == DevelopmentMode) {
@@ -146,7 +145,7 @@ bool BlackBerryCreatePackageStep::init()
                 dlg.setCskPassword(m_cskPassword);
                 dlg.setStorePassword(m_keystorePassword);
                 if (dlg.exec() == QDialog::Rejected) {
-                    raiseError(tr("Missing passwords for signing packages"));
+                    raiseError(tr("Missing passwords for signing packages."));
                     return false;
                 }
 
@@ -164,39 +163,6 @@ bool BlackBerryCreatePackageStep::init()
         }
         args << QLatin1String("-package") << QnxUtils::addQuotes(QDir::toNativeSeparators(info.packagePath()));
         args << QnxUtils::addQuotes(QDir::toNativeSeparators(preparedFilePath));
-
-        if (m_packageMode == DevelopmentMode && m_bundleMode == BundleQt) {
-            BlackBerryQtVersion *qtVersion = dynamic_cast<BlackBerryQtVersion *>
-                    (QtSupport::QtKitInformation::qtVersion(target()->kit()));
-            if (!qtVersion) {
-                raiseError(tr("Qt version configured for BlackBerry kit "
-                              "is not a BlackBerry Qt version"));
-                return false;
-            }
-
-            QMap<QString, QString> qtFolders;
-            qtFolders[QLatin1String("lib")] =
-                    qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_LIBS"));
-            qtFolders[QLatin1String("plugins")] =
-                    qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_PLUGINS"));
-            qtFolders[QLatin1String("imports")] =
-                    qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_IMPORTS"));
-            qtFolders[QLatin1String("qml")] =
-                    qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_QML"));
-
-            for (QMap<QString, QString>::const_iterator it = qtFolders.constBegin();
-                 it != qtFolders.constEnd(); ++it) {
-                const QString target = it.key();
-                const QString qtFolder = it.value();
-                if (QFileInfo(qtFolder).exists()) {
-                    args << QLatin1String("-e");
-                    args << qtFolder;
-                    args << target;
-                }
-            }
-
-            args << QLatin1String(".");
-        }
 
         addCommand(packageCmd, args);
     }
@@ -317,14 +283,14 @@ bool BlackBerryCreatePackageStep::prepareAppDescriptorFile(const QString &appDes
 {
     BlackBerryQtVersion *qtVersion = dynamic_cast<BlackBerryQtVersion *>(QtSupport::QtKitInformation::qtVersion(target()->kit()));
     if (!qtVersion) {
-        raiseError(tr("Error preparing application descriptor file"));
+        raiseError(tr("Error preparing BAR application descriptor file."));
         return false;
     }
 
     BarDescriptorDocument doc;
     QString errorString;
     if (!doc.open(&errorString, appDescriptorPath)) {
-        raiseError(tr("Error opening application descriptor file '%1' - %2")
+        raiseError(tr("Error opening BAR application descriptor file \"%1\" - %2")
             .arg(QDir::toNativeSeparators(appDescriptorPath))
             .arg(errorString));
         return false;
@@ -336,28 +302,15 @@ bool BlackBerryCreatePackageStep::prepareAppDescriptorFile(const QString &appDes
 
     //Replace Source path placeholder
     QHash<QString, QString> placeHoldersHash;
-    placeHoldersHash[QLatin1String("%SRC_DIR%")] =
-        QDir::toNativeSeparators(target()->project()->projectDirectory());
+    placeHoldersHash[QLatin1String("%SRC_DIR%")] = target()->project()->projectDirectory().toUserOutput();
     doc.expandPlaceHolders(placeHoldersHash);
-
-    // Add parameter for QML debugging (if enabled)
-    Debugger::DebuggerRunConfigurationAspect *aspect
-            = target()->activeRunConfiguration()->extraAspect<Debugger::DebuggerRunConfigurationAspect>();
-    if (aspect->useQmlDebugger()) {
-        const QString qmlDebuggerArg = QString::fromLatin1("-qmljsdebugger=port:%1")
-                .arg(aspect->qmlDebugServerPort());
-
-        QStringList args = doc.value(BarDescriptorDocument::arg).toStringList();
-        if (!args.contains(qmlDebuggerArg))
-            args.append(qmlDebuggerArg);
-
-        doc.setValue(BarDescriptorDocument::arg, args);
-    }
 
     // Set up correct environment depending on using bundled/pre-installed Qt
     QList<Utils::EnvironmentItem> envItems =
             doc.value(BarDescriptorDocument::env).value<QList<Utils::EnvironmentItem> >();
     Utils::Environment env(Utils::EnvironmentItem::toStringList(envItems), Utils::OsTypeOtherUnix);
+    BarDescriptorAssetList assetList = doc.value(BarDescriptorDocument::asset)
+            .value<BarDescriptorAssetList>();
 
     if (m_packageMode == SigningPackageMode
             || (m_packageMode == DevelopmentMode && m_bundleMode == PreInstalledQt)) {
@@ -371,13 +324,36 @@ bool BlackBerryCreatePackageStep::prepareAppDescriptorFile(const QString &appDes
         env.prependOrSetLibrarySearchPath(QString::fromLatin1("/usr/lib/qt%1/lib")
                                           .arg(versionNumber.majorVersion));
     } else if (m_packageMode == DevelopmentMode && m_bundleMode == BundleQt) {
+        QList<QPair<QString, QString> > qtFolders;
+        qtFolders.append(qMakePair(QString::fromLatin1("runtime/qt/lib"),
+                                   qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_LIBS"))));
+        qtFolders.append(qMakePair(QString::fromLatin1("runtime/qt/plugins"),
+                                   qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_PLUGINS"))));
+        qtFolders.append(qMakePair(QString::fromLatin1("runtime/qt/imports"),
+                                   qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_IMPORTS"))));
+        qtFolders.append(qMakePair(QString::fromLatin1("runtime/qt/qml"),
+                                   qtVersion->versionInfo().value(QLatin1String("QT_INSTALL_QML"))));
+
+        for (QList<QPair<QString, QString> >::const_iterator it = qtFolders.constBegin();
+             it != qtFolders.constEnd(); ++it) {
+            const QString target = it->first;
+            const QString qtFolder = it->second;
+            if (QFileInfo(qtFolder).exists()) {
+                BarDescriptorAsset asset;
+                asset.source = qtFolder;
+                asset.destination = target;
+                asset.entry = false;
+                assetList << asset;
+            }
+        }
+
         env.appendOrSet(QLatin1String("QML2_IMPORT_PATH"),
-                        QLatin1String("app/native/imports:app/native/qml"), QLatin1String(":"));
+                        QLatin1String("app/native/runtime/qt/qml"), QLatin1String(":"));
         env.appendOrSet(QLatin1String("QML_IMPORT_PATH"),
-                        QLatin1String("app/native/imports:app/native/qml"), QLatin1String(":"));
+                        QLatin1String("app/native/runtime/qt/imports"), QLatin1String(":"));
         env.appendOrSet(QLatin1String("QT_PLUGIN_PATH"),
-                        QLatin1String("app/native/plugins"), QLatin1String(":"));
-        env.prependOrSetLibrarySearchPath(QLatin1String("app/native/lib"));
+                        QLatin1String("app/native/runtime/qt/plugins"), QLatin1String(":"));
+        env.prependOrSetLibrarySearchPath(QLatin1String("app/native/runtime/qt/lib"));
     } else if (m_packageMode == DevelopmentMode && m_bundleMode == DeployedQt) {
         env.appendOrSet(QLatin1String("QML2_IMPORT_PATH"),
                         QString::fromLatin1("%1/qml:%1/imports").arg(fullQtLibraryPath()),
@@ -390,13 +366,15 @@ bool BlackBerryCreatePackageStep::prepareAppDescriptorFile(const QString &appDes
         env.prependOrSetLibrarySearchPath(QString::fromLatin1("%1/lib").arg(fullQtLibraryPath()));
     }
 
+    doc.setValue(BarDescriptorDocument::asset, QVariant::fromValue(assetList));
+
     QVariant envVar;
     envVar.setValue(Utils::EnvironmentItem::fromStringList(env.toStringList()));
     doc.setValue(BarDescriptorDocument::env, envVar);
 
     doc.setFilePath(preparedFilePath);
     if (!doc.save(&errorString)) {
-        raiseError(tr("Error saving prepared application descriptor file '%1' - %2")
+        raiseError(tr("Error saving prepared BAR application descriptor file \"%1\" - %2")
             .arg(QDir::toNativeSeparators(preparedFilePath))
             .arg(errorString));
         return false;

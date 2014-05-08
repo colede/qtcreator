@@ -157,6 +157,9 @@ public:
 
     QList<ServerNodeInstance> childItems() const;
 
+    QQuickItem *rootQuickItem() const;
+    QList<QQuickItem *> allItemsRecursive() const;
+
     QString id() const;
     qint32 instanceId() const;
 

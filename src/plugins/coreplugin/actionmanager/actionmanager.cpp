@@ -48,6 +48,9 @@ namespace {
     enum { warnAboutFindFailures = 0 };
 }
 
+static const char kKeyboardSettingsKey[] = "KeyboardShortcuts";
+static const char kKeyboardSettingsTransferredKey[] = "OldSettingsTransferred";
+
 using namespace Core;
 using namespace Core::Internal;
 
@@ -257,55 +260,6 @@ Command *ActionManager::registerAction(QAction *action, Id id, const Context &co
 }
 
 /*!
-    Makes a \a shortcut known to the system under the specified \a id.
-
-    Returns a command object that represents the shortcut in the application and is
-    owned by the ActionManager. You can registered several shortcuts with the
-    same \a id as long as the \a context is different. In this case
-    a trigger of the actual shortcut is forwarded to the registered QShortcut
-    for the currently active context.
-    A scriptable shortcut can be called from a script without the need for the user
-    to interact with it.
-*/
-Command *ActionManager::registerShortcut(QShortcut *shortcut, Id id, const Context &context, bool scriptable)
-{
-    QTC_CHECK(!context.isEmpty());
-    Shortcut *sc = 0;
-    if (CommandPrivate *c = d->m_idCmdMap.value(id, 0)) {
-        sc = qobject_cast<Shortcut *>(c);
-        if (!sc) {
-            qWarning() << "registerShortcut: id" << id.name()
-                       << "is registered with a different command type.";
-            return c;
-        }
-    } else {
-        sc = new Shortcut(id);
-        d->m_idCmdMap.insert(id, sc);
-    }
-
-    if (sc->shortcut()) {
-        qWarning() << "registerShortcut: action already registered, id" << id.name() << ".";
-        return sc;
-    }
-
-    if (!d->hasContext(context))
-        shortcut->setEnabled(false);
-    shortcut->setObjectName(id.toString());
-    shortcut->setParent(ICore::mainWindow());
-    shortcut->setContext(Qt::ApplicationShortcut);
-    sc->setShortcut(shortcut);
-    sc->setScriptable(scriptable);
-    sc->setContext(context);
-
-    emit m_instance->commandListChanged();
-    emit m_instance->commandAdded(id.toString());
-
-    if (isPresentationModeEnabled())
-        connect(sc->shortcut(), SIGNAL(activated()), d, SLOT(shortcutTriggered()));
-    return sc;
-}
-
-/*!
     Returns the Command object that is known to the system
     under the given \a id.
 
@@ -347,7 +301,7 @@ ActionContainer *ActionManager::actionContainer(Id id)
 */
 QList<Command *> ActionManager::commands()
 {
-    // transform list of CommandPrivate into list of Command
+    // transform list of Action into list of Command
     QList<Command *> result;
     foreach (Command *cmd, d->m_idCmdMap)
         result << cmd;
@@ -364,10 +318,7 @@ QList<Command *> ActionManager::commands()
 */
 void ActionManager::unregisterAction(QAction *action, Id id)
 {
-    Action *a = 0;
-    CommandPrivate *c = d->m_idCmdMap.value(id, 0);
-    QTC_ASSERT(c, return);
-    a = qobject_cast<Action *>(c);
+    Action *a = d->m_idCmdMap.value(id, 0);
     if (!a) {
         qWarning() << "unregisterAction: id" << id.name()
                    << "is registered with a different command type.";
@@ -382,31 +333,6 @@ void ActionManager::unregisterAction(QAction *action, Id id)
         d->m_idCmdMap.remove(id);
         delete a;
     }
-    emit m_instance->commandListChanged();
-}
-
-/*!
-    Removes the knowledge about a shortcut under the specified \a id.
-
-    Usually you do not need to unregister shortcuts. The only valid use case for unregistering
-    shortcuts, is for shortcuts that represent user definable actions. If the user removes such an action,
-    a corresponding shortcut also has to be unregistered from the action manager,
-    to make it disappear from shortcut settings etc.
-*/
-void ActionManager::unregisterShortcut(Id id)
-{
-    Shortcut *sc = 0;
-    CommandPrivate *c = d->m_idCmdMap.value(id, 0);
-    QTC_ASSERT(c, return);
-    sc = qobject_cast<Shortcut *>(c);
-    if (!sc) {
-        qWarning() << "unregisterShortcut: id" << id.name()
-                   << "is registered with a different command type.";
-        return;
-    }
-    delete sc->shortcut();
-    d->m_idCmdMap.remove(id);
-    delete sc;
     emit m_instance->commandListChanged();
 }
 
@@ -427,12 +353,6 @@ void ActionManager::setPresentationModeEnabled(bool enabled)
                 connect(c->action(), SIGNAL(triggered()), d, SLOT(actionTriggered()));
             else
                 disconnect(c->action(), SIGNAL(triggered()), d, SLOT(actionTriggered()));
-        }
-        if (c->shortcut()) {
-            if (enabled)
-                connect(c->shortcut(), SIGNAL(activated()), d, SLOT(shortcutTriggered()));
-            else
-                disconnect(c->shortcut(), SIGNAL(activated()), d, SLOT(shortcutTriggered()));
         }
     }
 
@@ -535,13 +455,6 @@ void ActionManagerPrivate::actionTriggered()
         showShortcutPopup(action->shortcut().toString());
 }
 
-void ActionManagerPrivate::shortcutTriggered()
-{
-    QShortcut *sc = qobject_cast<QShortcut *>(QObject::sender());
-    if (sc)
-        showShortcutPopup(sc->key().toString());
-}
-
 void ActionManagerPrivate::showShortcutPopup(const QString &shortcut)
 {
     if (shortcut.isEmpty() || !ActionManager::isPresentationModeEnabled())
@@ -560,17 +473,11 @@ void ActionManagerPrivate::showShortcutPopup(const QString &shortcut)
 
 Action *ActionManagerPrivate::overridableAction(Id id)
 {
-    Action *a = 0;
-    if (CommandPrivate *c = m_idCmdMap.value(id, 0)) {
-        a = qobject_cast<Action *>(c);
-        if (!a) {
-            qWarning() << "registerAction: id" << id.name()
-                       << "is registered with a different command type.";
-            return 0;
-        }
-    } else {
+    Action *a = m_idCmdMap.value(id, 0);
+    if (!a) {
         a = new Action(id);
         m_idCmdMap.insert(id, a);
+        readUserSettings(id, a);
         ICore::mainWindow()->addAction(a->action());
         a->action()->setObjectName(id.toString());
         a->action()->setShortcutContext(Qt::ApplicationShortcut);
@@ -583,43 +490,65 @@ Action *ActionManagerPrivate::overridableAction(Id id)
     return a;
 }
 
-static const char settingsGroup[] = "KeyBindings";
-static const char idKey[] = "ID";
-static const char sequenceKey[] = "Keysequence";
+void ActionManagerPrivate::readUserSettings(Id id, Action *cmd)
+{
+    QSettings *settings = Core::ICore::settings();
+    settings->beginGroup(QLatin1String(kKeyboardSettingsKey));
+    if (settings->contains(id.toString()))
+        cmd->setKeySequence(QKeySequence(settings->value(id.toString()).toString()));
+    settings->endGroup();
+}
+
+static const char oldSettingsGroup[] = "KeyBindings";
+static const char oldIdKey[] = "ID";
+static const char oldSequenceKey[] = "Keysequence";
 
 void ActionManagerPrivate::initialize()
 {
+    // TODO remove me after some period after 3.1
+    // TODO also remove the old settings after some period after 3.1
+    // settings->remove(QLatin1String(oldSettingsGroup));
+    // settings->contains(QLatin1String(kKeyboardSettingsKey) + QLatin1Char('/')
+    //                    + QLatin1String(kKeyboardSettingsTransferredKey))
+    // check if settings in old style (pre 3.1) exist
     QSettings *settings = Core::ICore::settings();
-    const int shortcuts = settings->beginReadArray(QLatin1String(settingsGroup));
+    if (settings->contains(QLatin1String(kKeyboardSettingsKey) + QLatin1Char('/')
+                           + QLatin1String(kKeyboardSettingsTransferredKey))) {
+        return;
+    }
+    // move old settings style to new settings style
+    QMap<Id, QKeySequence> shortcutMap;
+    const int shortcuts = settings->beginReadArray(QLatin1String(oldSettingsGroup));
     for (int i = 0; i < shortcuts; ++i) {
         settings->setArrayIndex(i);
-        const QKeySequence key(settings->value(QLatin1String(sequenceKey)).toString());
-        const Id id = Id::fromSetting(settings->value(QLatin1String(idKey)));
-
-        Command *cmd = ActionManager::command(id);
-        if (cmd)
-            cmd->setKeySequence(key);
+        const QKeySequence key(settings->value(QLatin1String(oldSequenceKey)).toString());
+        const Id id = Id::fromSetting(settings->value(QLatin1String(oldIdKey)));
+        shortcutMap.insert(id, key);
     }
     settings->endArray();
+    // write settings in new style
+    settings->beginGroup(QLatin1String(kKeyboardSettingsKey));
+    settings->setValue(QLatin1String(kKeyboardSettingsTransferredKey), true);
+    QMapIterator<Id, QKeySequence> it(shortcutMap);
+    while (it.hasNext()) {
+        it.next();
+        settings->setValue(it.key().toString(), it.value().toString());
+    }
+    settings->endGroup();
 }
 
 void ActionManagerPrivate::saveSettings(QSettings *settings)
 {
-    settings->beginWriteArray(QLatin1String(settingsGroup));
-    int count = 0;
-
+    settings->beginGroup(QLatin1String(kKeyboardSettingsKey));
     const IdCmdMap::const_iterator cmdcend = m_idCmdMap.constEnd();
     for (IdCmdMap::const_iterator j = m_idCmdMap.constBegin(); j != cmdcend; ++j) {
         const Id id = j.key();
-        CommandPrivate *cmd = j.value();
+        Action *cmd = j.value();
         QKeySequence key = cmd->keySequence();
-        if (key != cmd->defaultKeySequence()) {
-            settings->setArrayIndex(count);
-            settings->setValue(QLatin1String(idKey), id.toString());
-            settings->setValue(QLatin1String(sequenceKey), key.toString());
-            count++;
-        }
+        if (key != cmd->defaultKeySequence())
+            settings->setValue(id.toString(), key.toString());
+        else
+            settings->remove(id.toString());
     }
-
-    settings->endArray();
+    settings->endGroup();
 }

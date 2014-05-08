@@ -60,7 +60,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 
-static const bool DebugTiming = !qgetenv("QTC_CLANG_VERBOSE").isEmpty();
+static const bool DebugTiming = qgetenv("QTC_CLANG_VERBOSE") == "1";
 
 using namespace ClangCodeModel;
 using namespace ClangCodeModel::Internal;
@@ -1173,9 +1173,8 @@ void ClangCompletionAssistProcessor::completeIncludePath(const QString &realPath
                                                          const QStringList &suffixes)
 {
     QDirIterator i(realPath, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
-    const QString hint =
-            QObject::tr("Location: ", "Parent folder for proposed #include completion")
-            + QDir::cleanPath(realPath);
+    //: Parent folder for proposed #include completion
+    const QString hint = tr("Location: %1").arg(QDir::toNativeSeparators(QDir::cleanPath(realPath)));
     while (i.hasNext()) {
         const QString fileName = i.next();
         const QFileInfo fileInfo = i.fileInfo();

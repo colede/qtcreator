@@ -59,7 +59,7 @@ RunControl *AndroidAnalyzeSupport::createAnalyzeRunControl(AndroidRunConfigurati
     params.displayName = AndroidManager::packageName(target);
     params.sysroot = SysRootKitInformation::sysRoot(target->kit()).toString();
     // TODO: Not sure if these are the right paths.
-    params.workingDirectory = target->project()->projectDirectory();
+    params.workingDirectory = target->project()->projectDirectory().toString();
     if (runMode == ProjectExplorer::QmlProfilerRunMode) {
         QTcpServer server;
         QTC_ASSERT(server.listen(QHostAddress::LocalHost)
@@ -102,6 +102,13 @@ void AndroidAnalyzeSupport::handleRemoteProcessStarted(int qmlPort)
     m_qmlPort = qmlPort;
 }
 
+void AndroidAnalyzeSupport::handleRemoteProcessFinished(const QString &errorMsg)
+{
+    if (m_runControl)
+        m_runControl->notifyRemoteFinished();
+    AndroidRunSupport::handleRemoteProcessFinished(errorMsg);
+}
+
 void AndroidAnalyzeSupport::handleRemoteOutput(const QByteArray &output)
 {
     const QString msg = QString::fromUtf8(output);
@@ -114,10 +121,12 @@ void AndroidAnalyzeSupport::handleRemoteOutput(const QByteArray &output)
 
 void AndroidAnalyzeSupport::handleRemoteErrorOutput(const QByteArray &output)
 {
+    const QString msg = QString::fromUtf8(output);
     if (m_runControl)
-        m_runControl->logApplicationMessage(QString::fromUtf8(output), Utils::StdErrFormatSameLine);
+        m_runControl->logApplicationMessage(msg, Utils::StdErrFormatSameLine);
     else
         AndroidRunSupport::handleRemoteErrorOutput(output);
+    m_outputParser.processOutput(msg);
 }
 
 void AndroidAnalyzeSupport::remoteIsRunning()

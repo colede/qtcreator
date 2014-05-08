@@ -31,6 +31,7 @@
 
 #include "abstracteditorsupport.h"
 #include "builtinindexingsupport.h"
+#include "cppcodemodelinspectordumper.h"
 #include "cppcodemodelsettings.h"
 #include "cppfindreferences.h"
 #include "cpphighlightingsupport.h"
@@ -60,12 +61,14 @@
 #include <sstream>
 #endif
 
+static const bool DumpProjectInfo = qgetenv("QTC_DUMP_PROJECT_INFO") == "1";
+
 namespace CppTools {
 
 uint qHash(const ProjectPart &p)
 {
     uint h = qHash(p.toolchainDefines) ^ qHash(p.projectDefines) ^ p.cVersion ^ p.cxxVersion
-            ^ p.cxxExtensions ^ p.qtVersion;
+            ^ p.cxxExtensions ^ p.qtVersion ^ qHash(p.projectConfigFile);
 
     foreach (const QString &i, p.includePaths)
         h ^= qHash(i);
@@ -82,6 +85,8 @@ bool operator==(const ProjectPart &p1,
     if (p1.toolchainDefines != p2.toolchainDefines)
         return false;
     if (p1.projectDefines != p2.projectDefines)
+        return false;
+    if (p1.projectConfigFile != p2.projectConfigFile)
         return false;
     if (p1.cVersion != p2.cVersion)
         return false;
@@ -243,7 +248,7 @@ CppModelManager::CppModelManager(QObject *parent)
             this, SIGNAL(globalSnapshotChanged()));
 
     m_findReferences = new CppFindReferences(this);
-    m_indexerEnabled = qgetenv("QTCREATOR_NO_CODE_INDEXER").isNull();
+    m_indexerEnabled = qgetenv("QTC_NO_CODE_INDEXER") != "1";
 
     m_dirty = true;
 
@@ -393,67 +398,26 @@ QByteArray CppModelManager::internalDefinedMacros() const
         foreach (const ProjectPart::Ptr &part, pinfo.projectParts()) {
             addUnique(part->toolchainDefines.split('\n'), &macros, &alreadyIn);
             addUnique(part->projectDefines.split('\n'), &macros, &alreadyIn);
+            if (!part->projectConfigFile.isEmpty())
+                macros += readProjectConfigFile(part);
         }
     }
     return macros;
 }
 
-/// This function will aquire the mutex!
-void CppModelManager::dumpModelManagerConfiguration()
+/// This function will acquire mutexes!
+void CppModelManager::dumpModelManagerConfiguration(const QString &logFileId)
 {
-    // Tons of debug output...
-    qDebug() << "========= CppModelManager::dumpModelManagerConfiguration ======";
-    foreach (const ProjectInfo &pinfo, m_projectToProjectsInfo) {
-        qDebug() << " for project:"<< pinfo.project().data()->projectFilePath();
-        foreach (const ProjectPart::Ptr &part, pinfo.projectParts()) {
-            qDebug() << "=== part ===";
-            const char* cVersion;
-            switch (part->cVersion) {
-            case ProjectPart::C89: cVersion = "C89"; break;
-            case ProjectPart::C99: cVersion = "C99"; break;
-            case ProjectPart::C11: cVersion = "C11"; break;
-            default: cVersion = "INVALID";
-            }
-            const char* cxxVersion;
-            switch (part->cxxVersion) {
-            case ProjectPart::CXX98: cxxVersion = "CXX98"; break;
-            case ProjectPart::CXX11: cxxVersion = "CXX11"; break;
-            default: cxxVersion = "INVALID";
-            }
-            QStringList cxxExtensions;
-            if (part->cxxExtensions & ProjectPart::GnuExtensions)
-                cxxExtensions << QLatin1String("GnuExtensions");
-            if (part->cxxExtensions & ProjectPart::MicrosoftExtensions)
-                cxxExtensions << QLatin1String("MicrosoftExtensions");
-            if (part->cxxExtensions & ProjectPart::BorlandExtensions)
-                cxxExtensions << QLatin1String("BorlandExtensions");
-            if (part->cxxExtensions & ProjectPart::OpenMPExtensions)
-                cxxExtensions << QLatin1String("OpenMP");
+    const Snapshot globalSnapshot = snapshot();
+    const QString globalSnapshotTitle
+        = QString::fromLatin1("Global/Indexing Snapshot (%1 Documents)").arg(globalSnapshot.size());
 
-            qDebug() << "cVersion:" << cVersion;
-            qDebug() << "cxxVersion:" << cxxVersion;
-            qDebug() << "cxxExtensions:" << cxxExtensions;
-            qDebug() << "Qt version:" << part->qtVersion;
-            qDebug() << "precompiled header:" << part->precompiledHeaders;
-            qDebug() << "toolchain defines:" << part->toolchainDefines;
-            qDebug() << "project defines:" << part->projectDefines;
-            qDebug() << "includes:" << part->includePaths;
-            qDebug() << "frameworkPaths:" << part->frameworkPaths;
-            qDebug() << "files:" << part->files;
-            qDebug() << "";
-        }
-    }
-
+    CppCodeModelInspector::Dumper dumper(globalSnapshot, logFileId);
+    dumper.dumpProjectInfos(projectInfos());
+    dumper.dumpSnapshot(globalSnapshot, globalSnapshotTitle, /*isGlobalSnapshot=*/ true);
+    dumper.dumpWorkingCopy(workingCopy());
     ensureUpdated();
-    qDebug() << "=== Merged include paths ===";
-    foreach (const QString &inc, m_includePaths)
-        qDebug() << inc;
-    qDebug() << "=== Merged framework paths ===";
-    foreach (const QString &inc, m_frameworkPaths)
-        qDebug() << inc;
-    qDebug() << "=== Merged defined macros ===";
-    qDebug() << m_definedMacros;
-    qDebug() << "========= End of dump ======";
+    dumper.dumpMergedEntities(m_includePaths, m_frameworkPaths, m_definedMacros);
 }
 
 void CppModelManager::addExtraEditorSupport(AbstractEditorSupport *editorSupport)
@@ -777,8 +741,8 @@ QFuture<void> CppModelManager::updateProjectInfo(const ProjectInfo &newProjectIn
     } // Mutex scope
 
     // If requested, dump everything we got
-    if (!qgetenv("QTCREATOR_DUMP_PROJECT_INFO").isEmpty())
-        dumpModelManagerConfiguration();
+    if (DumpProjectInfo)
+        dumpModelManagerConfiguration(QLatin1String("updateProjectInfo"));
 
     // Remove files from snapshot that are not reachable any more
     if (filesRemoved)
@@ -797,6 +761,7 @@ ProjectPart::Ptr CppModelManager::projectPartForProjectFile(const QString &proje
 
 QList<ProjectPart::Ptr> CppModelManager::projectPart(const QString &fileName) const
 {
+    QMutexLocker locker(&m_projectMutex);
     return m_fileToProjectParts.value(fileName);
 }
 

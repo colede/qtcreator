@@ -38,11 +38,11 @@ RangeMover {
     property string endTimeString: detailedPrintTime(startTime+duration)
     property string durationString: detailedPrintTime(duration)
 
-    property real startTime: getLeft() * viewTimePerPixel + qmlProfilerModelProxy.traceStartTime()
-    property real duration: Math.max(getWidth() * viewTimePerPixel, 500)
-    property real viewTimePerPixel: 1
+    property double startTime: getLeft() * viewTimePerPixel + zoomControl.windowStart()
+    property double duration: Math.max(getWidth() * viewTimePerPixel, 500)
+    property double viewTimePerPixel: 1
+    property double creationReference : 0
     property int creationState : 0
-    property int creationReference : 0
 
     Connections {
         target: zoomControl
@@ -63,11 +63,10 @@ RangeMover {
         root.updateRangeButton();
     }
 
-    function reset(setVisible) {
+    function reset() {
         setRight(getLeft() + 1);
         creationState = 0;
         creationReference = 0;
-        visible = setVisible;
     }
 
     function setPos(pos) {
@@ -108,8 +107,7 @@ RangeMover {
     // creation control
     function releasedOnCreation() {
         if (selectionRange.creationState === 2) {
-            flick.interactive = true;
-            vertflick.stayInteractive = true;
+            flick.stayInteractive = true;
             selectionRange.creationState = 3;
             selectionRangeControl.enabled = false;
         }
@@ -117,8 +115,7 @@ RangeMover {
 
     function pressedOnCreation() {
         if (selectionRange.creationState === 1) {
-            flick.interactive = false;
-            vertflick.stayInteractive = false;
+            flick.stayInteractive = false;
             selectionRange.setPos(selectionRangeControl.mouseX + flick.contentX);
             selectionRange.creationState = 2;
         }
@@ -129,16 +126,9 @@ RangeMover {
             selectionRange.creationState = 1;
         }
 
-        if (!root.eventCount)
-            return;
-
         if (!selectionRangeControl.pressed && selectionRange.creationState==3)
             return;
 
-        if (selectionRangeControl.pressed) {
-            selectionRange.setPos(selectionRangeControl.mouseX + flick.contentX);
-        } else {
-            selectionRange.setPos(selectionRangeControl.mouseX + flick.contentX);
-        }
+        selectionRange.setPos(selectionRangeControl.mouseX + flick.contentX);
     }
 }

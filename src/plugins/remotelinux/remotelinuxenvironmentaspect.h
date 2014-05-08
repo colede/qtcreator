@@ -30,7 +30,7 @@
 #ifndef REMOTELINUXENVIRONMENTASPECT_H
 #define REMOTELINUXENVIRONMENTASPECT_H
 
-#include "remotelinuxrunconfiguration.h"
+#include "abstractremotelinuxrunconfiguration.h"
 
 #include "remotelinux_export.h"
 
@@ -38,7 +38,7 @@
 
 namespace RemoteLinux {
 class RemoteLinuxEnvironmentAspectWidget;
-class RemoteLinuxRunConfiguration;
+class AbstractRemoteLinuxRunConfiguration;
 
 class REMOTELINUX_EXPORT RemoteLinuxEnvironmentAspect : public ProjectExplorer::EnvironmentAspect
 {
@@ -53,7 +53,7 @@ public:
     QString baseEnvironmentDisplayName(int base) const;
     Utils::Environment baseEnvironment() const;
 
-    RemoteLinuxRunConfiguration *runConfiguration() const;
+    AbstractRemoteLinuxRunConfiguration *runConfiguration() const;
 
     Utils::Environment remoteEnvironment() const;
     void setRemoteEnvironment(const Utils::Environment &env);

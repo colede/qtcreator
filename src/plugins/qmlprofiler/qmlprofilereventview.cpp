@@ -111,7 +111,8 @@ public:
     QmlProfilerEventRelativesView *m_eventParents;
 
     QmlProfilerEventsModelProxy *modelProxy;
-    bool globalStats;
+    qint64 rangeStart;
+    qint64 rangeEnd;
 };
 
 QmlProfilerEventsWidget::QmlProfilerEventsWidget(QWidget *parent,
@@ -164,7 +165,7 @@ QmlProfilerEventsWidget::QmlProfilerEventsWidget(QWidget *parent,
 
     d->m_profilerTool = profilerTool;
     d->m_viewContainer = container;
-    d->globalStats = true;
+    d->rangeStart = d->rangeEnd = -1;
 }
 
 QmlProfilerEventsWidget::~QmlProfilerEventsWidget()
@@ -186,8 +187,9 @@ void QmlProfilerEventsWidget::clear()
 
 void QmlProfilerEventsWidget::getStatisticsInRange(qint64 rangeStart, qint64 rangeEnd)
 {
+    d->rangeStart = rangeStart;
+    d->rangeEnd = rangeEnd;
     d->modelProxy->limitToRange(rangeStart, rangeEnd);
-    d->globalStats = (rangeStart == -1) && (rangeEnd == -1);
 }
 
 QModelIndex QmlProfilerEventsWidget::selectedItem() const
@@ -203,6 +205,8 @@ void QmlProfilerEventsWidget::contextMenuEvent(QContextMenuEvent *ev)
     QAction *copyRowAction = 0;
     QAction *copyTableAction = 0;
     QAction *showExtendedStatsAction = 0;
+    QAction *showJavaScriptAction = 0;
+    QAction *showQmlAction = 0;
     QAction *getLocalStatsAction = 0;
     QAction *getGlobalStatsAction = 0;
 
@@ -227,12 +231,20 @@ void QmlProfilerEventsWidget::contextMenuEvent(QContextMenuEvent *ev)
     }
 
     menu.addSeparator();
-    getLocalStatsAction = menu.addAction(tr("Limit Events Pane to Current Range"));
+    getLocalStatsAction = menu.addAction(tr("Limit to Current Range"));
     if (!d->m_viewContainer->hasValidSelection())
         getLocalStatsAction->setEnabled(false);
-    getGlobalStatsAction = menu.addAction(tr("Reset Events Pane"));
+    getGlobalStatsAction = menu.addAction(tr("Show Full Range"));
     if (hasGlobalStats())
         getGlobalStatsAction->setEnabled(false);
+
+    showJavaScriptAction = menu.addAction(tr("Show JavaScript Events"));
+    showJavaScriptAction->setCheckable(true);
+    showJavaScriptAction->setChecked(showJavaScript());
+
+    showQmlAction = menu.addAction(tr("Show QML Events"));
+    showQmlAction->setCheckable(true);
+    showQmlAction->setChecked(showQml());
 
     QAction *selectedAction = menu.exec(position);
 
@@ -249,6 +261,10 @@ void QmlProfilerEventsWidget::contextMenuEvent(QContextMenuEvent *ev)
             getStatisticsInRange(-1, -1);
         if (selectedAction == showExtendedStatsAction)
             setShowExtendedStatistics(!showExtendedStatistics());
+        if (selectedAction == showJavaScriptAction)
+            setShowJavaScript(showJavaScriptAction->isChecked());
+        if (selectedAction == showQmlAction)
+            setShowQml(showQmlAction->isChecked());
     }
 }
 
@@ -288,7 +304,7 @@ void QmlProfilerEventsWidget::selectBySourceLocation(const QString &filename, in
 
 bool QmlProfilerEventsWidget::hasGlobalStats() const
 {
-    return d->globalStats;
+    return d->rangeStart == -1 && d->rangeEnd == -1;
 }
 
 void QmlProfilerEventsWidget::setShowExtendedStatistics(bool show)
@@ -299,6 +315,34 @@ void QmlProfilerEventsWidget::setShowExtendedStatistics(bool show)
 bool QmlProfilerEventsWidget::showExtendedStatistics() const
 {
     return d->m_eventTree->showExtendedStatistics();
+}
+
+void QmlProfilerEventsWidget::setShowJavaScript(bool show)
+{
+    d->modelProxy->setEventTypeAccepted(QmlDebug::Javascript, show);
+    d->modelProxy->limitToRange(d->rangeStart, d->rangeEnd);
+}
+
+void QmlProfilerEventsWidget::setShowQml(bool show)
+{
+    d->modelProxy->setEventTypeAccepted(QmlDebug::Binding, show);
+    d->modelProxy->setEventTypeAccepted(QmlDebug::HandlingSignal, show);
+    d->modelProxy->setEventTypeAccepted(QmlDebug::Compiling, show);
+    d->modelProxy->setEventTypeAccepted(QmlDebug::Creating, show);
+    d->modelProxy->limitToRange(d->rangeStart, d->rangeEnd);
+}
+
+bool QmlProfilerEventsWidget::showJavaScript() const
+{
+    return d->modelProxy->eventTypeAccepted(QmlDebug::Javascript);
+}
+
+bool QmlProfilerEventsWidget::showQml() const
+{
+    return d->modelProxy->eventTypeAccepted(QmlDebug::Binding) &&
+            d->modelProxy->eventTypeAccepted(QmlDebug::HandlingSignal) &&
+            d->modelProxy->eventTypeAccepted(QmlDebug::Compiling) &&
+            d->modelProxy->eventTypeAccepted(QmlDebug::Creating);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -337,7 +381,7 @@ QmlProfilerEventsMainView::QmlProfilerEventsMainView(QWidget *parent,
 
     d->m_model = new QStandardItemModel(this);
     setModel(d->m_model);
-    connect(this,SIGNAL(clicked(QModelIndex)), this,SLOT(jumpToItem(QModelIndex)));
+    connect(this, SIGNAL(activated(QModelIndex)), this, SLOT(jumpToItem(QModelIndex)));
 
     d->modelProxy = modelProxy;
     connect(d->modelProxy,SIGNAL(dataAvailable()), this, SLOT(buildModel()));
@@ -524,8 +568,8 @@ void QmlProfilerEventsMainView::parseModelProxy()
                     typeString = typeString + QLatin1Char(' ') +  tr("(Opt)");
                     toolTipText = tr("Binding is evaluated by the optimized engine.");
                 } else if (event.bindingType == (int)V8Binding) {
-                    toolTipText = tr("Binding not optimized (e.g. has side effects or assignments,\n"
-                                     "references to elements in other files, loops, etc.)");
+                    toolTipText = tr("Binding not optimized (might have side effects or assignments,\n"
+                                     "references to elements in other files, loops, and so on.)");
 
                 }
             }
@@ -609,7 +653,7 @@ QString QmlProfilerEventsMainView::nameForType(int typeNumber)
     case 2: return QmlProfilerEventsMainView::tr("Create");
     case 3: return QmlProfilerEventsMainView::tr("Binding");
     case 4: return QmlProfilerEventsMainView::tr("Signal");
-    case 5: return QmlProfilerEventsMainView::tr("Javascript");
+    case 5: return QmlProfilerEventsMainView::tr("JavaScript");
     }
     return QString();
 }
@@ -655,13 +699,22 @@ void QmlProfilerEventsMainView::jumpToItem(const QModelIndex &index)
     d->m_preventSelectBounce = false;
 }
 
+void QmlProfilerEventsMainView::selectItem(const QStandardItem *item)
+{
+    // If the same item is already selected, don't reselect it.
+    QModelIndex index = d->m_model->indexFromItem(item);
+    if (index != currentIndex()) {
+        setCurrentIndex(index);
+        jumpToItem(index);
+    }
+}
+
 void QmlProfilerEventsMainView::selectEvent(const QString &eventHash)
 {
     for (int i=0; i<d->m_model->rowCount(); i++) {
         QStandardItem *infoItem = d->m_model->item(i, 0);
         if (infoItem->data(EventHashStrRole).toString() == eventHash) {
-            setCurrentIndex(d->m_model->indexFromItem(infoItem));
-            jumpToItem(currentIndex());
+            selectItem(infoItem);
             return;
         }
     }
@@ -674,13 +727,11 @@ void QmlProfilerEventsMainView::selectEventByLocation(const QString &filename, i
 
     for (int i=0; i<d->m_model->rowCount(); i++) {
         QStandardItem *infoItem = d->m_model->item(i, 0);
-        if (currentIndex() != d->m_model->indexFromItem(infoItem) &&
-                infoItem->data(FilenameRole).toString() == filename &&
+        if (infoItem->data(FilenameRole).toString() == filename &&
                 infoItem->data(LineRole).toInt() == line &&
                 (column == -1 ||
                 infoItem->data(ColumnRole).toInt() == column)) {
-            setCurrentIndex(d->m_model->indexFromItem(infoItem));
-            jumpToItem(currentIndex());
+            selectItem(infoItem);
             return;
         }
     }
@@ -780,7 +831,10 @@ QmlProfilerEventRelativesView::QmlProfilerEventRelativesView(QmlProfilerModelMan
     setRootIsDecorated(false);
     updateHeader();
 
-    connect(this,SIGNAL(clicked(QModelIndex)), this,SLOT(jumpToItem(QModelIndex)));
+    connect(this,SIGNAL(activated(QModelIndex)), this,SLOT(jumpToItem(QModelIndex)));
+
+    // Clear when new data available as the selection may be invalid now.
+    connect(d->modelProxy, SIGNAL(dataAvailable()), this, SLOT(clear()));
 }
 
 QmlProfilerEventRelativesView::~QmlProfilerEventRelativesView()

@@ -327,9 +327,11 @@ void TaskModel::setFileNotFound(const QModelIndex &idx, bool b)
 /////
 
 TaskFilterModel::TaskFilterModel(TaskModel *sourceModel, QObject *parent) : QAbstractItemModel(parent),
-    m_mappingUpToDate(false), m_sourceModel(sourceModel)
+    m_sourceModel(sourceModel)
 {
     Q_ASSERT(m_sourceModel);
+    updateMapping();
+
     connect(m_sourceModel, SIGNAL(rowsInserted(QModelIndex,int,int)),
             this, SLOT(handleNewRows(QModelIndex,int,int)));
     connect(m_sourceModel, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
@@ -360,7 +362,6 @@ int TaskFilterModel::rowCount(const QModelIndex &parent) const
     if (parent.isValid())
         return 0;
 
-    updateMapping();
     return m_mapping.count();
 }
 
@@ -437,7 +438,7 @@ void TaskFilterModel::handleRowsAboutToBeRemoved(const QModelIndex &index, int f
     endRemoveRows();
 }
 
-void TaskFilterModel::handleDataChanged(QModelIndex top, QModelIndex bottom)
+void TaskFilterModel::handleDataChanged(const QModelIndex &top, const QModelIndex &bottom)
 {
     const QPair<int, int> range = findFilteredRange(top.row(), bottom.row(), m_mapping);
     if (range.first > range.second)
@@ -453,7 +454,6 @@ void TaskFilterModel::handleReset()
 
 QModelIndex TaskFilterModel::mapFromSource(const QModelIndex &idx) const
 {
-    updateMapping();
     QList<int>::const_iterator it = qBinaryFind(m_mapping.constBegin(), m_mapping.constEnd(), idx.row());
     if (it == m_mapping.constEnd())
         return QModelIndex();
@@ -462,7 +462,6 @@ QModelIndex TaskFilterModel::mapFromSource(const QModelIndex &idx) const
 
 QModelIndex TaskFilterModel::mapToSource(const QModelIndex &index) const
 {
-    updateMapping();
     int row = index.row();
     if (row >= m_mapping.count())
         return QModelIndex();
@@ -472,15 +471,12 @@ QModelIndex TaskFilterModel::mapToSource(const QModelIndex &index) const
 void TaskFilterModel::invalidateFilter()
 {
     beginResetModel();
-    m_mappingUpToDate = false;
+    updateMapping();
     endResetModel();
 }
 
 void TaskFilterModel::updateMapping() const
 {
-    if (m_mappingUpToDate)
-        return;
-
     m_mapping.clear();
     for (int i = 0; i < m_sourceModel->rowCount(); ++i) {
         QModelIndex index = m_sourceModel->index(i, 0);
@@ -488,8 +484,6 @@ void TaskFilterModel::updateMapping() const
         if (filterAcceptsTask(task))
             m_mapping.append(i);
     }
-
-    m_mappingUpToDate = true;
 }
 
 bool TaskFilterModel::filterAcceptsTask(const Task &task) const

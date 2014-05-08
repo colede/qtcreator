@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import QtcLibrary
 
 QtcLibrary {
@@ -11,6 +11,7 @@ QtcLibrary {
 
     Depends { name: "Qt"; submodules: ["core", "widgets"] }
     Depends { name: "Aggregation" }
+    Depends { name: "Utils" }
 
     files: [
         "extensionsystem_global.h",

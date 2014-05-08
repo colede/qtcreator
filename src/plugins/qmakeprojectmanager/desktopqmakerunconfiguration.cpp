@@ -118,7 +118,7 @@ bool DesktopQmakeRunConfiguration::isEnabled() const
 QString DesktopQmakeRunConfiguration::disabledReason() const
 {
     if (m_parseInProgress)
-        return tr("The .pro file '%1' is currently being parsed.")
+        return tr("The .pro file \"%1\" is currently being parsed.")
                 .arg(QFileInfo(m_proFilePath).fileName());
 
     if (!m_parseSuccess)
@@ -220,7 +220,7 @@ DesktopQmakeRunConfigurationWidget::DesktopQmakeRunConfigurationWidget(DesktopQm
     m_workingDirectoryEdit->setExpectedKind(PathChooser::Directory);
     m_workingDirectoryEdit->setHistoryCompleter(QLatin1String("Qmake.WorkingDir.History"));
     m_workingDirectoryEdit->setPath(m_qmakeRunConfiguration->baseWorkingDirectory());
-    m_workingDirectoryEdit->setBaseDirectory(m_qmakeRunConfiguration->target()->project()->projectDirectory());
+    m_workingDirectoryEdit->setBaseFileName(m_qmakeRunConfiguration->target()->project()->projectDirectory());
     EnvironmentAspect *aspect = qmakeRunConfiguration->extraAspect<EnvironmentAspect>();
     if (aspect) {
         connect(aspect, SIGNAL(environmentChanged()), this, SLOT(environmentWasChanged()));
@@ -412,7 +412,7 @@ QWidget *DesktopQmakeRunConfiguration::createConfigurationWidget()
 
 QVariantMap DesktopQmakeRunConfiguration::toMap() const
 {
-    const QDir projectDir = QDir(target()->project()->projectDirectory());
+    const QDir projectDir = QDir(target()->project()->projectDirectory().toString());
     QVariantMap map(LocalApplicationRunConfiguration::toMap());
     map.insert(QLatin1String(COMMAND_LINE_ARGUMENTS_KEY), m_commandLineArguments);
     map.insert(QLatin1String(PRO_FILE_KEY), projectDir.relativeFilePath(m_proFilePath));
@@ -424,7 +424,7 @@ QVariantMap DesktopQmakeRunConfiguration::toMap() const
 
 bool DesktopQmakeRunConfiguration::fromMap(const QVariantMap &map)
 {
-    const QDir projectDir = QDir(target()->project()->projectDirectory());
+    const QDir projectDir = QDir(target()->project()->projectDirectory().toString());
     m_commandLineArguments = map.value(QLatin1String(COMMAND_LINE_ARGUMENTS_KEY)).toString();
     m_proFilePath = QDir::cleanPath(projectDir.filePath(map.value(QLatin1String(PRO_FILE_KEY)).toString()));
     m_runMode = map.value(QLatin1String(USE_TERMINAL_KEY), false).toBool() ? Console : Gui;
@@ -695,7 +695,7 @@ bool DesktopQmakeRunConfigurationFactory::canHandle(Target *t) const
     return devType == Constants::DESKTOP_DEVICE_TYPE;
 }
 
-QList<RunConfiguration *> DesktopQmakeRunConfigurationFactory::runConfigurationsForNode(Target *t, ProjectExplorer::Node *n)
+QList<RunConfiguration *> DesktopQmakeRunConfigurationFactory::runConfigurationsForNode(Target *t, const Node *n)
 {
     QList<RunConfiguration *> result;
     foreach (RunConfiguration *rc, t->runConfigurations())

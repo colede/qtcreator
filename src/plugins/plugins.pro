@@ -27,6 +27,7 @@ SUBDIRS   = \
     cmakeprojectmanager \
     autotoolsprojectmanager \
     fakevim \
+    emacskeys \
     designer \
     resourceeditor \
     genericprojectmanager \
@@ -51,16 +52,20 @@ SUBDIRS   = \
     ios \
     beautifier
 
+minQtVersion(5, 0, 0) {
+    SUBDIRS += winrt
+
+    isEmpty(QBS_INSTALL_DIR): QBS_INSTALL_DIR = $$(QBS_INSTALL_DIR)
+    exists(../shared/qbs/qbs.pro)|!isEmpty(QBS_INSTALL_DIR): \
+        SUBDIRS += \
+            qbsprojectmanager
+}
+
 # prefer qmake variable set on command line over env var
 isEmpty(LLVM_INSTALL_DIR):LLVM_INSTALL_DIR=$$(LLVM_INSTALL_DIR)
 !isEmpty(LLVM_INSTALL_DIR) {
     SUBDIRS += clangcodemodel
 }
-
-isEmpty(QBS_INSTALL_DIR): QBS_INSTALL_DIR = $$(QBS_INSTALL_DIR)
-exists(../shared/qbs/qbs.pro)|!isEmpty(QBS_INSTALL_DIR): \
-    SUBDIRS += \
-        qbsprojectmanager
 
 isEmpty(IDE_PACKAGE_MODE) {
     SUBDIRS += \

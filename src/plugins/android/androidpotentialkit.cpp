@@ -46,7 +46,25 @@
 using namespace Android;
 using namespace Android::Internal;
 
+QString AndroidPotentialKit::displayName() const
+{
+    return tr("Configure Android...");
+}
+
+void Android::Internal::AndroidPotentialKit::executeFromMenu()
+{
+    Core::ICore::showOptionsDialog(Constants::ANDROID_SETTINGS_CATEGORY,
+                                   Constants::ANDROID_SETTINGS_ID);
+}
+
 QWidget *AndroidPotentialKit::createWidget(QWidget *parent) const
+{
+    if (!isEnabled())
+        return 0;
+    return new AndroidPotentialKitWidget(parent);
+}
+
+bool AndroidPotentialKit::isEnabled() const
 {
     QList<ProjectExplorer::Kit *> kits = ProjectExplorer::KitManager::kits();
     foreach (ProjectExplorer::Kit *kit, kits) {
@@ -54,7 +72,7 @@ QWidget *AndroidPotentialKit::createWidget(QWidget *parent) const
         if (kit->isAutoDetected()
                 && deviceId == Core::Id(Constants::ANDROID_DEVICE_ID)
                 && !kit->isSdkProvided()) {
-            return 0;
+            return false;
         }
     }
 
@@ -66,17 +84,14 @@ QWidget *AndroidPotentialKit::createWidget(QWidget *parent) const
         }
     }
 
-    if (!found) // no android qt
-        return 0;
-
-    return new AndroidPotentialKitWidget(parent);
+    return found;
 }
 
 AndroidPotentialKitWidget::AndroidPotentialKitWidget(QWidget *parent)
     : Utils::DetailsWidget(parent)
 {
-    setSummaryText(QLatin1String("<b>Create Android Kits</b>"));
-    setIcon(QIcon(QLatin1String(Constants::ANDROID_SETTINGS_CATEGORY_ICON)));
+    setSummaryText(QLatin1String("<b>Android has not been configured. Create Android kits.</b>"));
+    setIcon(QIcon(QLatin1String(":/projectexplorer/images/compile_warning.png")));
     //detailsWidget->setState(Utils::DetailsWidget::NoSummary);
     QWidget *mainWidget = new QWidget(this);
     setWidget(mainWidget);
@@ -90,7 +105,7 @@ AndroidPotentialKitWidget::AndroidPotentialKitWidget(QWidget *parent)
     layout->addWidget(label, 0, 0, 1, 2);
 
     QPushButton *openOptions = new QPushButton;
-    openOptions->setText(tr("Open Settings"));
+    openOptions->setText(Core::ICore::msgShowOptionsDialog());
     openOptions->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(openOptions, 1, 1);
 

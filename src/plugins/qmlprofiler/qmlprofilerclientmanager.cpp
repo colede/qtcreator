@@ -136,8 +136,6 @@ void QmlProfilerClientManager::clearBufferedData()
 
 void QmlProfilerClientManager::discardPendingData()
 {
-    if (d->connection)
-        d->connection->flush();
     clearBufferedData();
 }
 
@@ -149,8 +147,10 @@ void QmlProfilerClientManager::connectClient(quint16 port)
         delete d->connection;
     d->connection = new QmlDebugConnection;
     enableServices();
-    connect(d->connection, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
-            this, SLOT(connectionStateChanged()));
+    connect(d->connection, SIGNAL(stateMessage(QString)), this, SLOT(logState(QString)));
+    connect(d->connection, SIGNAL(errorMessage(QString)), this, SLOT(logState(QString)));
+    connect(d->connection, SIGNAL(opened()), this, SLOT(qmlDebugConnectionOpened()));
+    connect(d->connection, SIGNAL(closed()), this, SLOT(qmlDebugConnectionClosed()));
     d->connectionTimer.start();
     d->tcpPort = port;
 }
@@ -172,8 +172,8 @@ void QmlProfilerClientManager::connectClientSignals()
 {
     QTC_ASSERT(d->profilerState, return);
     if (d->qmlclientplugin) {
-        connect(d->qmlclientplugin.data(), SIGNAL(complete()),
-                this, SLOT(qmlComplete()));
+        connect(d->qmlclientplugin.data(), SIGNAL(complete(qint64)),
+                this, SLOT(qmlComplete(qint64)));
         connect(d->qmlclientplugin.data(),
                 SIGNAL(rangedEvent(int,int,qint64,qint64,QStringList,QmlDebug::QmlEventLocation,
                              qint64,qint64,qint64,qint64,qint64)),
@@ -204,8 +204,8 @@ void QmlProfilerClientManager::connectClientSignals()
 void QmlProfilerClientManager::disconnectClientSignals()
 {
     if (d->qmlclientplugin) {
-        disconnect(d->qmlclientplugin.data(), SIGNAL(complete()),
-                   this, SLOT(qmlComplete()));
+        disconnect(d->qmlclientplugin.data(), SIGNAL(complete(qint64)),
+                   this, SLOT(qmlComplete(qint64)));
         disconnect(d->qmlclientplugin.data(),
                    SIGNAL(rangedEvent(int,int,qint64,qint64,QStringList,QmlDebug::QmlEventLocation,
                                 qint64,qint64,qint64,qint64,qint64)),
@@ -216,8 +216,6 @@ void QmlProfilerClientManager::disconnectClientSignals()
                 d->modelManager->traceTime(), SLOT(setEndTime(qint64)));
         disconnect(d->qmlclientplugin.data(), SIGNAL(traceStarted(qint64)),
                 d->modelManager->traceTime(), SLOT(setStartTime(qint64)));
-        disconnect(d->qmlclientplugin.data(), SIGNAL(frame(qint64,int,int)),
-                   d->modelManager, SLOT(addFrameEvent(qint64,int,int)));
         disconnect(d->qmlclientplugin.data(), SIGNAL(enabledChanged()),
                    d->qmlclientplugin.data(), SLOT(sendRecordingStatus()));
         // fixme: this should be unified for both clients
@@ -237,17 +235,15 @@ void QmlProfilerClientManager::disconnectClientSignals()
 
 void QmlProfilerClientManager::connectToClient()
 {
-    if (!d->connection || d->connection->state() != QAbstractSocket::UnconnectedState)
+    if (!d->connection || d->connection->isOpen())
         return;
 
-    QmlProfilerTool::logStatus(QString::fromLatin1("QML Profiler: Connecting to %1:%2 ...")
-                               .arg(d->tcpHost, QString::number(d->tcpPort)));
     d->connection->connectToHost(d->tcpHost, d->tcpPort);
 }
 
 bool QmlProfilerClientManager::isConnected() const
 {
-    return d->connection && d->connection->isConnected();
+    return d->connection && d->connection->isOpen();
 }
 
 void QmlProfilerClientManager::disconnectClient()
@@ -264,7 +260,7 @@ void QmlProfilerClientManager::tryToConnect()
 {
     ++d->connectionAttempts;
 
-    if (d->connection && d->connection->isConnected()) {
+    if (d->connection && d->connection->isOpen()) {
         d->connectionTimer.stop();
         d->connectionAttempts = 0;
     } else if (d->connectionAttempts == 50) {
@@ -291,42 +287,25 @@ void QmlProfilerClientManager::tryToConnect()
     }
 }
 
-void QmlProfilerClientManager::connectionStateChanged()
+void QmlProfilerClientManager::qmlDebugConnectionOpened()
 {
-    if (!d->connection)
-        return;
-    switch (d->connection->state()) {
-    case QAbstractSocket::UnconnectedState:
-    {
-        if (QmlProfilerPlugin::debugOutput)
-            qWarning("QML Profiler: disconnected");
-        disconnectClient();
-        emit connectionClosed();
-        break;
-    }
-    case QAbstractSocket::HostLookupState:
-        break;
-    case QAbstractSocket::ConnectingState: {
-        if (QmlProfilerPlugin::debugOutput)
-            qWarning("QML Profiler: Connecting to debug server ...");
-        break;
-    }
-    case QAbstractSocket::ConnectedState:
-    {
-        if (QmlProfilerPlugin::debugOutput)
-            qWarning("QML Profiler: connected and running");
-            // notify the client recording status
-            clientRecordingChanged();
-        break;
-    }
-    case QAbstractSocket::ClosingState:
-        if (QmlProfilerPlugin::debugOutput)
-            qWarning("QML Profiler: closing ...");
-        break;
-    case QAbstractSocket::BoundState:
-    case QAbstractSocket::ListeningState:
-        break;
-    }
+    logState(tr("Debug connection opened"));
+    clientRecordingChanged();
+}
+
+void QmlProfilerClientManager::qmlDebugConnectionClosed()
+{
+    logState(tr("Debug connection closed"));
+    disconnectClient();
+    emit connectionClosed();
+}
+
+void QmlProfilerClientManager::logState(const QString &msg)
+{
+    QString state = QLatin1String("QML Profiler: ") + msg;
+    if (QmlProfilerPlugin::debugOutput)
+        qWarning() << state;
+    QmlProfilerTool::logState(state);
 }
 
 void QmlProfilerClientManager::retryMessageBoxFinished(int result)
@@ -342,21 +321,22 @@ void QmlProfilerClientManager::retryMessageBoxFinished(int result)
         // fall through
     }
     default: {
-        if (d->connection)
-            QmlProfilerTool::logStatus(QLatin1String("QML Profiler: Failed to connect! ") + d->connection->errorString());
-        else
-            QmlProfilerTool::logStatus(QLatin1String("QML Profiler: Failed to connect!"));
-
+        // The actual error message has already been logged.
+        logState(tr("Failed to connect!"));
         emit connectionFailed();
         break;
     }
     }
 }
 
-void QmlProfilerClientManager::qmlComplete()
+void QmlProfilerClientManager::qmlComplete(qint64 maximumTime)
 {
+    if (maximumTime > d->modelManager->traceTime()->endTime())
+        d->modelManager->traceTime()->setEndTime(maximumTime);
     d->qmlDataReady = true;
-    if (!d->v8clientplugin || d->v8clientplugin.data()->status() != QmlDebug::Enabled || d->v8DataReady) {
+    if (!d->v8clientplugin ||
+            d->v8clientplugin.data()->state() != QmlDebug::QmlDebugClient::Enabled ||
+            d->v8DataReady) {
         emit dataReadyForProcessing();
         // once complete is sent, reset the flags
         d->qmlDataReady = false;
@@ -367,7 +347,9 @@ void QmlProfilerClientManager::qmlComplete()
 void QmlProfilerClientManager::v8Complete()
 {
     d->v8DataReady = true;
-    if (!d->qmlclientplugin || d->qmlclientplugin.data()->status() != QmlDebug::Enabled || d->qmlDataReady) {
+    if (!d->qmlclientplugin ||
+            d->qmlclientplugin.data()->state() != QmlDebug::QmlDebugClient::Enabled ||
+            d->qmlDataReady) {
         emit dataReadyForProcessing();
         // once complete is sent, reset the flags
         d->v8DataReady = false;

@@ -310,7 +310,8 @@ void Manager::registerMimeTypes()
         connect(&m_registeringWatcher, SIGNAL(finished()), processor, SLOT(deleteLater()));
         m_registeringWatcher.setFuture(future);
 
-        ProgressManager::addTask(future, tr("Registering definitions"), "TextEditor.Task.Register");
+        ProgressManager::addTask(future, tr("Registering Highlighting Definitions"),
+                                 "TextEditor.Task.Register");
     } else {
         m_hasQueuedRegistration = true;
         m_registeringWatcher.cancel();
@@ -443,7 +444,8 @@ void Manager::downloadDefinitions(const QList<QUrl> &urls, const QString &savePa
     m_isDownloadingDefinitionsSpec = true;
     QFuture<void> future = QtConcurrent::map(m_downloaders, DownloaderStarter());
     m_downloadWatcher.setFuture(future);
-    ProgressManager::addTask(future, tr("Downloading definitions"), "TextEditor.Task.Download");
+    ProgressManager::addTask(future, tr("Downloading Highlighting Definitions"),
+                             "TextEditor.Task.Download");
 }
 
 void Manager::downloadDefinitionsFinished()
@@ -467,7 +469,7 @@ void Manager::downloadDefinitionsFinished()
         else
             text = tr("Error downloading one or more definitions.");
         if (writeError)
-            text.append(tr("\nPlease check the directory's access rights."));
+            text.append(QLatin1Char('\n') + tr("Please check the directory's access rights."));
         QMessageBox::critical(0, tr("Download Error"), text);
     }
 

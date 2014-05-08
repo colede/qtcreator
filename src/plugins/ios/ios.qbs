@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -11,6 +11,7 @@ QtcPlugin {
     Depends { name: "QmakeProjectManager" }
     Depends { name: "Debugger" }
     Depends { name: "QtSupport" }
+    Depends { name: "AnalyzerBase" }
     Depends { name: "Qt"; submodules: ["widgets", "xml", "network"] }
 
     cpp.includePaths: base.concat("../../shared")
@@ -18,6 +19,8 @@ QtcPlugin {
 
     files: [
         "ios.qrc",
+        "iosanalyzesupport.cpp",
+        "iosanalyzesupport.h",
         "iosbuildstep.cpp",
         "iosbuildstep.h",
         "iosbuildstep.ui",
@@ -39,10 +42,13 @@ QtcPlugin {
         "iosdevice.h",
         "iosdevicefactory.cpp",
         "iosdevicefactory.h",
+        "iosdsymbuildstep.cpp",
+        "iosdsymbuildstep.h",
         "iosmanager.cpp",
         "iosmanager.h",
         "iosplugin.cpp",
         "iosplugin.h",
+        "iospresetbuildstep.ui",
         "iosprobe.cpp",
         "iosprobe.h",
         "iosqtversion.cpp",

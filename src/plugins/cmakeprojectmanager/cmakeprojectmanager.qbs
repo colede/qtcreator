@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -52,9 +52,13 @@ QtcPlugin {
         "cmakeprojectplugin.h",
         "cmakerunconfiguration.cpp",
         "cmakerunconfiguration.h",
-        "cmakevalidator.cpp",
-        "cmakevalidator.h",
+        "cmaketool.cpp",
+        "cmaketool.h",
         "makestep.cpp",
         "makestep.h",
+        "cmakesettingspage.h",
+        "cmakesettingspage.cpp",
+        "generatorinfo.h",
+        "generatorinfo.cpp"
     ]
 }

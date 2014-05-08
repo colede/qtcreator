@@ -34,9 +34,10 @@
 
 #include <QWidget>
 
+namespace Utils { class ListView; }
+
 QT_BEGIN_NAMESPACE
 class QLabel;
-class QListView;
 class QSortFilterProxyModel;
 class QModelIndex;
 class QFileSystemModel;
@@ -78,11 +79,11 @@ protected:
 private:
     void setCurrentTitle(QString dirName, const QString &fullPath);
     bool setCurrentDirectory(const QString &directory);
-    void openItem(const QModelIndex &srcIndex);
+    void openItem(const QModelIndex &srcIndex, bool openDirectoryAsProject = false);
     QModelIndex currentItem() const;
     QString currentDirectory() const;
 
-    QListView *m_listView;
+    Utils::ListView *m_listView;
     QFileSystemModel *m_fileSystemModel;
     QAction *m_filterHiddenFilesAction;
     QSortFilterProxyModel *m_filterModel;

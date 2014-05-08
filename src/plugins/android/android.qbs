@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -108,6 +108,8 @@ QtcPlugin {
         "androidsignaloperation.h",
         "androidtoolchain.cpp",
         "androidtoolchain.h",
+        "avddialog.cpp",
+        "avddialog.h",
         "certificatesmodel.cpp",
         "certificatesmodel.h",
         "createandroidmanifestwizard.cpp",

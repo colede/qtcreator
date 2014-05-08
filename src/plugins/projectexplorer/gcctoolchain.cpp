@@ -374,8 +374,10 @@ QByteArray GccToolChain::predefinedMacros(const QStringList &cxxflags) const
     QStringList arguments = gccPredefinedMacrosOptions();
     for (int iArg = 0; iArg < allCxxflags.length(); ++iArg) {
         const QString &a = allCxxflags.at(iArg);
-        if (a == QLatin1String("-arch") || a == QLatin1String("-sysroot")
-                || a == QLatin1String("-isysroot")) {
+        if (a == QLatin1String("-arch")) {
+            if (++iArg < allCxxflags.length() && !arguments.contains(a))
+                arguments << a << allCxxflags.at(iArg);
+        } else if (a == QLatin1String("--sysroot") || a == QLatin1String("-isysroot")) {
             if (++iArg < allCxxflags.length())
                 arguments << a << allCxxflags.at(iArg);
         } else if (a == QLatin1String("-m128bit-long-double") || a == QLatin1String("-m32")
@@ -789,7 +791,6 @@ ToolChain *GccToolChainFactory::restore(const QVariantMap &data)
     GccToolChain *tc = new GccToolChain(ToolChain::ManualDetection);
     // Updating from 2.5:
     QVariantMap updated = data;
-    QString id = idFromMap(updated);
     if (tc->fromMap(updated))
         return tc;
 

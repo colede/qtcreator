@@ -829,8 +829,11 @@ void Preprocessor::handleDefined(PPToken *tk)
     pushToken(tk);
 
     QByteArray result(1, '0');
-    if (m_env->resolve(idToken.asByteArrayRef()))
+    const ByteArrayRef macroName = idToken.asByteArrayRef();
+    if (macroDefinition(macroName, idToken.offset + m_state.m_offsetRef,
+                        idToken.lineno, m_env, m_client)) {
         result[0] = '1';
+    }
     *tk = generateToken(T_NUMERIC_LITERAL, result.constData(), result.size(), lineno, false);
 }
 
@@ -898,6 +901,11 @@ void Preprocessor::skipPreprocesorDirective(PPToken *tk)
     ScopedBoolSwap s(m_state.m_inPreprocessorDirective, true);
 
     while (isContinuationToken(*tk)) {
+        if (tk->isComment()) {
+            synchronizeOutputLines(*tk);
+            enforceSpacing(*tk, true);
+            currentOutputBuffer().append(tk->tokenStart(), tk->length());
+        }
         lex(tk);
     }
 }
@@ -964,11 +972,11 @@ bool Preprocessor::handleIdentifier(PPToken *tk)
     // their corresponding argument in macro substitution. For expanded tokens which are
     // generated, this information must be taken from somewhere else. What we do is to keep
     // a "reference" line initialize set to the line where expansion happens.
-    unsigned baseLine = idTk.lineno;
+    unsigned baseLine = idTk.lineno - m_state.m_lineRef + 1;
 
     QVector<PPToken> body = macro->definitionTokens();
 
-    // Withing nested expansion we might reach a previously added marker token. In this case,
+    // Within nested expansion we might reach a previously added marker token. In this case,
     // we need to move it from its current possition to outside the nesting.
     PPToken oldMarkerTk;
 
@@ -1300,7 +1308,7 @@ void Preprocessor::trackExpansionCycles(PPToken *tk)
 
 static void adjustForCommentOrStringNewlines(unsigned *currentLine, const PPToken &tk)
 {
-    if (tk.is(T_COMMENT) || tk.is(T_DOXY_COMMENT) || tk.isStringLiteral())
+    if (tk.isComment() || tk.isStringLiteral())
         (*currentLine) += tk.asByteArrayRef().count('\n');
 }
 
@@ -1703,8 +1711,13 @@ void Preprocessor::handleDefineDirective(PPToken *tk)
         previousLine = tk->lineno;
 
         // Discard comments in macro definitions (keep comments flag doesn't apply here).
-        if (!tk->isComment())
+        if (tk->isComment()) {
+            synchronizeOutputLines(*tk);
+            enforceSpacing(*tk, true);
+            currentOutputBuffer().append(tk->tokenStart(), tk->length());
+        } else {
             bodyTokens.push_back(*tk);
+        }
 
         lex(tk);
     }
@@ -1824,13 +1837,13 @@ void Preprocessor::handleElifDirective(PPToken *tk, const PPToken &poundToken)
             m_state.m_skipping[m_state.m_ifLevel] = true;
         } else if (m_state.m_trueTest[m_state.m_ifLevel]) {
             if (!m_state.m_skipping[m_state.m_ifLevel]) {
-                // start skipping because the preceeding then-part was not skipped
+                // start skipping because the preceding then-part was not skipped
                 m_state.m_skipping[m_state.m_ifLevel] = true;
                 if (m_client)
                     startSkippingBlocks(poundToken);
             }
         } else {
-            // preceeding then-part was skipped, so calculate if we should start
+            // preceding then-part was skipped, so calculate if we should start
             // skipping, depending on the condition
             Value result;
             evalExpression(tk, result);
@@ -1941,10 +1954,19 @@ void Preprocessor::handleUndefDirective(PPToken *tk)
     lex(tk); // consume "undef" token
     if (tk->is(T_IDENTIFIER)) {
         const ByteArrayRef macroName = tk->asByteArrayRef();
-        const Macro *macro = m_env->remove(macroName);
+        const unsigned offset = tk->offset + m_state.m_offsetRef;
+        // Track macro use if previously defined
+        if (m_client) {
+            if (const Macro *existingMacro = m_env->resolve(macroName))
+                m_client->notifyMacroReference(offset, tk->lineno, *existingMacro);
+        }
+        synchronizeOutputLines(*tk);
+        Macro *macro = m_env->remove(macroName);
 
-        if (m_client && macro)
+        if (m_client && macro) {
+            macro->setOffset(offset);
             m_client->macroAdded(*macro);
+        }
         lex(tk); // consume macro name
 #ifndef NO_DEBUG
     } else {
@@ -2029,6 +2051,15 @@ bool Preprocessor::atStartOfOutputLine() const
 void Preprocessor::maybeStartOutputLine()
 {
     QByteArray &buffer = currentOutputBuffer();
-    if (!buffer.isEmpty() && !buffer.endsWith('\n'))
+    if (buffer.isEmpty())
+        return;
+    if (!buffer.endsWith('\n'))
+        buffer.append('\n');
+    // If previous line ends with \ (possibly followed by whitespace), add another \n
+    const char *start = buffer.constData();
+    const char *ch = start + buffer.length() - 2;
+    while (ch > start && (*ch != '\n') && std::isspace(*ch))
+        --ch;
+    if (*ch == '\\')
         buffer.append('\n');
 }

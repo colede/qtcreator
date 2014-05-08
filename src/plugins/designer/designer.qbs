@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 import qbs.FileInfo
 
 import QtcPlugin
@@ -12,6 +12,7 @@ QtcPlugin {
 
     Depends { name: "Core" }
     Depends { name: "CppTools" }
+    Depends { name: "ResourceEditor" }
     Depends { name: "TextEditor" }
     Depends { name: "ProjectExplorer" }
 

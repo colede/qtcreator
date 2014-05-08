@@ -85,7 +85,7 @@ public:
         QString topLevel;
     };
 
-    VcsManagerPrivate() : m_unconfiguredVcs(0)
+    VcsManagerPrivate() : m_unconfiguredVcs(0), m_cachedAdditionalToolsPathsDirty(true)
     { }
 
     ~VcsManagerPrivate()
@@ -180,6 +180,9 @@ public:
     QMap<QString, VcsInfo *> m_cachedMatches;
     QList<VcsInfo *> m_vcsInfoList;
     IVersionControl *m_unconfiguredVcs;
+
+    QStringList m_cachedAdditionalToolsPaths;
+    bool m_cachedAdditionalToolsPathsDirty;
 };
 
 static VcsManagerPrivate *d = 0;
@@ -213,6 +216,8 @@ void VcsManager::extensionsInitialized()
                 DocumentManager::instance(), SIGNAL(filesChangedInternally(QStringList)));
         connect(versionControl, SIGNAL(repositoryChanged(QString)),
                 m_instance, SIGNAL(repositoryChanged(QString)));
+        connect(versionControl, SIGNAL(configurationChanged()),
+                m_instance, SLOT(handleConfigurationChanges()));
     }
 }
 
@@ -244,8 +249,11 @@ IVersionControl* VcsManager::findVersionControlForDirectory(const QString &input
     }
 
     // Make sure we an absolute path:
-    const QString directory = QDir(inputDirectory).absolutePath();
-
+    QString directory = QDir(inputDirectory).absolutePath();
+#ifdef WITH_TESTS
+    if (directory[0].isLetter() && directory.indexOf(QLatin1String(":") + QLatin1String(TEST_PREFIX)) == 1)
+        directory = directory.mid(2);
+#endif
     VcsManagerPrivate::VcsInfo *cachedData = d->findInCache(directory);
     if (cachedData) {
         if (topLevelDirectory)
@@ -322,7 +330,8 @@ IVersionControl* VcsManager::findVersionControlForDirectory(const QString &input
                                   .arg(versionControl->displayName()),
                                   InfoBarEntry::GlobalSuppressionEnabled);
                 d->m_unconfiguredVcs = versionControl;
-                info.setCustomButtonInfo(tr("Configure"), m_instance, SLOT(configureVcs()));
+                info.setCustomButtonInfo(Core::ICore::msgShowOptionsDialog(), m_instance,
+                                         SLOT(configureVcs()));
                 infoBar->addInfo(info);
             }
             return 0;
@@ -373,7 +382,7 @@ bool VcsManager::promptToDelete(IVersionControl *vc, const QString &fileName)
     const QString msg = tr("Would you like to remove this file from the version control system (%1)?\n"
                            "Note: This might remove the local file.").arg(vc->displayName());
     const QMessageBox::StandardButton button =
-        QMessageBox::question(0, title, msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+        QMessageBox::question(ICore::dialogParent(), title, msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (button != QMessageBox::Yes)
         return true;
     return vc->vcsDelete(fileName);
@@ -405,6 +414,17 @@ QString VcsManager::msgToAddToVcsFailed(const QStringList &files, const IVersion
               .arg(files.front(), vc->displayName()) + QLatin1Char('\n')
         : tr("Could not add the following files to version control (%1)\n%2")
               .arg(vc->displayName(), files.join(QString(QLatin1Char('\n'))));
+}
+
+QStringList VcsManager::additionalToolsPath()
+{
+    if (d->m_cachedAdditionalToolsPathsDirty) {
+        d->m_cachedAdditionalToolsPaths.clear();
+        foreach (IVersionControl *vc, allVersionControls())
+            d->m_cachedAdditionalToolsPaths.append(vc->additionalToolsPath());
+        d->m_cachedAdditionalToolsPathsDirty = false;
+    }
+    return d->m_cachedAdditionalToolsPaths;
 }
 
 void VcsManager::promptToAdd(const QString &directory, const QStringList &fileNames)
@@ -456,6 +476,14 @@ void VcsManager::configureVcs()
     QTC_ASSERT(d->m_unconfiguredVcs, return);
     ICore::showOptionsDialog(Id(VcsBase::Constants::VCS_SETTINGS_CATEGORY),
                              d->m_unconfiguredVcs->id());
+}
+
+void VcsManager::handleConfigurationChanges()
+{
+    d->m_cachedAdditionalToolsPathsDirty = true;
+    IVersionControl *vcs = qobject_cast<IVersionControl *>(sender());
+    if (vcs)
+        emit configurationChanged(vcs);
 }
 
 } // namespace Core

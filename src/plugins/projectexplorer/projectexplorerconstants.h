@@ -205,7 +205,7 @@ const char IMPORT_WIZARD_CATEGORY[] = "T.Import";
 const char IMPORT_WIZARD_CATEGORY_DISPLAY[] = QT_TRANSLATE_NOOP("ProjectExplorer", "Import Project");
 
 // Wizard extra values
-const char PREFERED_PROJECT_NODE[] = "ProjectExplorer.PreferedProjectNode";
+const char PREFERRED_PROJECT_NODE[] = "ProjectExplorer.PreferredProjectNode";
 const char PROJECT_KIT_IDS[] = "ProjectExplorer.Profile.Ids";
 
 // Build step lists ids:
@@ -252,7 +252,8 @@ const char VAR_CURRENTDEVICE_USERNAME[] = "CurrentDevice:UserName";
 const char VAR_CURRENTDEVICE_PRIVATEKEYFILE[] = "CurrentDevice:PrivateKeyFile";
 
 const char HIDE_FILE_FILTER_SETTING[] = "GenericProject/FileFilter";
-const char HIDE_FILE_FILTER_DEFAULT[] = "Makefile*; *.o; *.obj; *~; *.files; *.config; *.creator; *.user; *.includes; *.autosave";
+const char HIDE_FILE_FILTER_DEFAULT[] = "Makefile*; *.o; *.lo; *.la; *.obj; *~; *.files;"
+    " *.config; *.creator; *.user; *.includes; *.autosave";
 
 const char SHOW_FILE_FILTER_SETTING[] = "GenericProject/ShowFileFilter";
 const char SHOW_FILE_FILTER_DEFAULT[] = "*.c; *.cc; *.cpp; *.cp; *.cxx; *.c++; *.h; *.hh; *.hpp; *.hxx;";

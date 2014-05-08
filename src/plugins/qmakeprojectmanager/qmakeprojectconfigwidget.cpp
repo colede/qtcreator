@@ -49,7 +49,7 @@ QmakeProjectConfigWidget::QmakeProjectConfigWidget(QmakeBuildConfiguration *bc)
       m_ignoreChange(false)
 {
     m_defaultShadowBuildDir
-            = QmakeProject::shadowBuildDirectory(bc->target()->project()->projectFilePath(),
+            = QmakeProject::shadowBuildDirectory(bc->target()->project()->projectFilePath().toString(),
                                                bc->target()->kit(),
                                                Utils::FileUtils::qmakeFriendlyName(bc->displayName()));
 
@@ -69,7 +69,7 @@ QmakeProjectConfigWidget::QmakeProjectConfigWidget(QmakeBuildConfiguration *bc)
     m_ui->shadowBuildDirEdit->setExpectedKind(Utils::PathChooser::ExistingDirectory);
     m_ui->shadowBuildDirEdit->setHistoryCompleter(QLatin1String("Qmake.BuildDir.History"));
     m_ui->shadowBuildDirEdit->setEnvironment(bc->environment());
-    m_ui->shadowBuildDirEdit->setBaseDirectory(bc->target()->project()->projectDirectory());
+    m_ui->shadowBuildDirEdit->setBaseFileName(bc->target()->project()->projectDirectory());
     bool isShadowBuild = bc->isShadowBuild();
     if (isShadowBuild) {
         m_ui->shadowBuildDirEdit->setPath(bc->rawBuildDirectory().toString());
@@ -78,7 +78,7 @@ QmakeProjectConfigWidget::QmakeProjectConfigWidget(QmakeBuildConfiguration *bc)
         m_ui->shadowBuildDirEdit->setPath(m_defaultShadowBuildDir);
         m_ui->shadowBuildDirEdit->setVisible(false);
     }
-    m_ui->inSourceBuildDirEdit->setPath(bc->target()->project()->projectDirectory());
+    m_ui->inSourceBuildDirEdit->setFileName(bc->target()->project()->projectDirectory());
     m_ui->inSourceBuildDirEdit->setReadOnly(true);
     m_ui->inSourceBuildDirEdit->setEnabled(false);
 
@@ -155,9 +155,9 @@ void QmakeProjectConfigWidget::buildDirectoryChanged()
 
 void QmakeProjectConfigWidget::onBeforeBeforeShadowBuildDirBrowsed()
 {
-    QString initialDirectory = m_buildConfiguration->target()->project()->projectDirectory();
+    Utils::FileName initialDirectory = m_buildConfiguration->target()->project()->projectDirectory();
     if (!initialDirectory.isEmpty())
-        m_ui->shadowBuildDirEdit->setInitialBrowsePathBackup(initialDirectory);
+        m_ui->shadowBuildDirEdit->setInitialBrowsePathBackup(initialDirectory.toString());
 }
 
 void QmakeProjectConfigWidget::shadowBuildClicked(bool checked)
@@ -193,7 +193,7 @@ void QmakeProjectConfigWidget::updateProblemLabel()
 {
     m_ui->shadowBuildDirEdit->triggerChanged();
     ProjectExplorer::Kit *k = m_buildConfiguration->target()->kit();
-    const QString proFileName = m_buildConfiguration->target()->project()->projectFilePath();
+    const QString proFileName = m_buildConfiguration->target()->project()->projectFilePath().toString();
 
     // Check for Qt version:
     QtSupport::BaseQtVersion *version = QtSupport::QtKitInformation::qtVersion(k);
@@ -243,7 +243,7 @@ void QmakeProjectConfigWidget::updateProblemLabel()
     }
 
     if (allGood) {
-        QString buildDirectory = m_buildConfiguration->target()->project()->projectDirectory();
+        QString buildDirectory = m_buildConfiguration->target()->project()->projectDirectory().toString();
         if (m_buildConfiguration->isShadowBuild())
             buildDirectory = m_buildConfiguration->buildDirectory().toString();
         QList<ProjectExplorer::Task> issues;

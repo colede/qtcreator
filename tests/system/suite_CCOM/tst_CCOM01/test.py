@@ -27,7 +27,6 @@
 ##
 #############################################################################
 
-source("../../shared/suites_qtta.py")
 source("../../shared/qtcreator.py")
 
 # entry of test
@@ -44,7 +43,9 @@ def main():
     if not startedWithoutPluginError():
         return
     # open example project
-    checkedTargets = openQmakeProject(examplePath)
+    # qmlapplicationviewer of this example supports only Qt version < 5
+    targets = Targets.desktopTargetClasses() ^ Targets.DESKTOP_501_DEFAULT ^ Targets.DESKTOP_521_DEFAULT
+    checkedTargets = openQmakeProject(examplePath, targets)
     if not replaceLine("propertyanimation.Sources.main\\.cpp",
                        "#include <QtGui/QApplication>",
                        "#include <QApplication>"):

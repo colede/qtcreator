@@ -489,7 +489,7 @@ void DebuggerEngine::startDebugger(DebuggerRunControl *runControl)
 
     d->m_progress.setProgressRange(0, 1000);
     FutureProgress *fp = ProgressManager::addTask(d->m_progress.future(),
-        tr("Launching"), "Debugger.Launcher");
+        tr("Launching Debugger"), "Debugger.Launcher");
     fp->setKeepOnFinish(FutureProgress::HideOnFinish);
     d->m_progress.reportStarted();
 
@@ -540,7 +540,9 @@ void DebuggerEngine::gotoLocation(const Location &loc)
     IEditor *editor = EditorManager::openEditor(file, Id(),
                                                 EditorManager::IgnoreNavigationHistory, &newEditor);
     QTC_ASSERT(editor, return); // Unreadable file?
-    editor->gotoLine(line, 0);
+
+    editor->gotoLine(line, 0, !debuggerCore()->boolSetting(StationaryEditorWhileStepping));
+
     if (newEditor)
         editor->document()->setProperty(Constants::OPENED_BY_DEBUGGER, true);
 
@@ -1402,6 +1404,10 @@ void DebuggerEngine::reloadFullStack()
 {
 }
 
+void DebuggerEngine::loadAdditionalQmlStack()
+{
+}
+
 void DebuggerEngine::reloadDebuggingHelpers()
 {
 }
@@ -1800,7 +1806,7 @@ void DebuggerEngine::checkForReleaseBuild(const DebuggerStartParameters &sp)
 
         foreach (const QByteArray &name, interesting) {
             const QString found = seen.contains(name) ? tr("Found.") : tr("Not found.");
-            detailedWarning.append(tr("\nSection %1: %2").arg(_(name)).arg(found));
+            detailedWarning.append(QLatin1Char('\n') + tr("Section %1: %2").arg(_(name)).arg(found));
         }
         break;
     }

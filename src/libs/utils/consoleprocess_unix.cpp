@@ -32,6 +32,7 @@
 #include "qtcprocess.h"
 
 #include <utils/hostosinfo.h>
+#include <utils/qtcassert.h>
 
 #include <QCoreApplication>
 #include <QTimer>
@@ -49,6 +50,7 @@ ConsoleProcessPrivate::ConsoleProcessPrivate() :
     m_appPid(0),
     m_stubSocket(0),
     m_tempFile(0),
+    m_error(QProcess::UnknownError),
     m_settings(0),
     m_stubConnected(false),
     m_stubPid(0),
@@ -64,6 +66,11 @@ ConsoleProcess::ConsoleProcess(QObject *parent)  :
     d->m_process.setProcessChannelMode(QProcess::ForwardedChannels);
 }
 
+qint64 ConsoleProcess::applicationMainThreadID() const
+{
+    return -1;
+}
+
 void ConsoleProcess::setSettings(QSettings *settings)
 {
     d->m_settings = settings;
@@ -74,6 +81,9 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
     if (isRunning())
         return false;
 
+    d->m_errorString.clear();
+    d->m_error = QProcess::UnknownError;
+
     QtcProcess::SplitError perr;
     QtcProcess::Arguments pargs = QtcProcess::prepareArgs(args, &perr, HostOsInfo::hostOs(),
                                                           &d->m_environment, &d->m_workingDir);
@@ -82,12 +92,12 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
         pcmd = program;
     } else {
         if (perr != QtcProcess::FoundMeta) {
-            emit processError(tr("Quoting error in command."));
+            emitError(QProcess::FailedToStart, tr("Quoting error in command."));
             return false;
         }
         if (d->m_mode == Debug) {
             // FIXME: QTCREATORBUG-2809
-            emit processError(tr("Debugging complex shell commands in a terminal"
+            emitError(QProcess::FailedToStart, tr("Debugging complex shell commands in a terminal"
                                  " is currently not supported."));
             return false;
         }
@@ -102,7 +112,7 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
                                                               HostOsInfo::hostOs(),
                                                               &d->m_environment, &d->m_workingDir);
     if (qerr != QtcProcess::SplitOk) {
-        emit processError(qerr == QtcProcess::BadQuoting
+        emitError(QProcess::FailedToStart, qerr == QtcProcess::BadQuoting
                           ? tr("Quoting error in terminal command.")
                           : tr("Terminal command may not be a shell command."));
         return false;
@@ -110,7 +120,7 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
 
     const QString err = stubServerListen();
     if (!err.isEmpty()) {
-        emit processError(msgCommChannelFailed(err));
+        emitError(QProcess::FailedToStart, msgCommChannelFailed(err));
         return false;
     }
 
@@ -119,7 +129,7 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
         d->m_tempFile = new QTemporaryFile();
         if (!d->m_tempFile->open()) {
             stubServerShutdown();
-            emit processError(msgCannotCreateTempFile(d->m_tempFile->errorString()));
+            emitError(QProcess::FailedToStart, msgCannotCreateTempFile(d->m_tempFile->errorString()));
             delete d->m_tempFile;
             d->m_tempFile = 0;
             return false;
@@ -131,7 +141,7 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
         }
         if (d->m_tempFile->write(contents) != contents.size() || !d->m_tempFile->flush()) {
             stubServerShutdown();
-            emit processError(msgCannotWriteTempFile());
+            emitError(QProcess::FailedToStart, msgCannotWriteTempFile());
             delete d->m_tempFile;
             d->m_tempFile = 0;
             return false;
@@ -157,7 +167,7 @@ bool ConsoleProcess::start(const QString &program, const QString &args)
     d->m_process.start(xterm, allArgs);
     if (!d->m_process.waitForStarted()) {
         stubServerShutdown();
-        emit processError(tr("Cannot start the terminal emulator '%1', change the setting in the "
+        emitError(QProcess::UnknownError, tr("Cannot start the terminal emulator \"%1\", change the setting in the "
                              "Environment options.").arg(xterm));
         delete d->m_tempFile;
         d->m_tempFile = 0;
@@ -241,7 +251,7 @@ QString ConsoleProcess::stubServerListen()
     const QString stubServer  = stubFifoDir + QLatin1String("/stub-socket");
     if (!d->m_stubServer.listen(stubServer)) {
         ::rmdir(d->m_stubServerDir.constData());
-        return tr("Cannot create socket '%1': %2").arg(stubServer, d->m_stubServer.errorString());
+        return tr("Cannot create socket \"%1\": %2").arg(stubServer, d->m_stubServer.errorString());
     }
     return QString();
 }
@@ -284,9 +294,9 @@ void ConsoleProcess::readStubOutput()
         QByteArray out = d->m_stubSocket->readLine();
         out.chop(1); // \n
         if (out.startsWith("err:chdir ")) {
-            emit processError(msgCannotChangeToWorkDir(workingDirectory(), errorMsg(out.mid(10).toInt())));
+            emitError(QProcess::FailedToStart, msgCannotChangeToWorkDir(workingDirectory(), errorMsg(out.mid(10).toInt())));
         } else if (out.startsWith("err:exec ")) {
-            emit processError(msgCannotExecute(d->m_executable, errorMsg(out.mid(9).toInt())));
+            emitError(QProcess::FailedToStart, msgCannotExecute(d->m_executable, errorMsg(out.mid(9).toInt())));
         } else if (out.startsWith("spid ")) {
             delete d->m_tempFile;
             d->m_tempFile = 0;
@@ -306,7 +316,7 @@ void ConsoleProcess::readStubOutput()
             d->m_appPid = 0;
             emit processStopped(d->m_appCode, d->m_appStatus);
         } else {
-            emit processError(msgUnexpectedOutput(out));
+            emitError(QProcess::UnknownError, msgUnexpectedOutput(out));
             d->m_stubPid = 0;
             d->m_process.terminate();
             break;

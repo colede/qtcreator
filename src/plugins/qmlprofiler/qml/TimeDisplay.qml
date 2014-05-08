@@ -37,7 +37,6 @@ Canvas {
 
     property real startTime : 0
     property real endTime : 0
-    property real timePerPixel: 0
 
     Connections {
         target: zoomControl
@@ -49,22 +48,27 @@ Canvas {
     }
 
     onPaint: {
+        if (context === null)
+            return; // canvas isn't ready
+
+        context.reset();
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 
-        var totalTime = endTime - startTime;
-        var spacing = width / totalTime;
+        var realWidth = width - 1; // account for left border
+        var totalTime = Math.max(1, endTime - startTime);
+        var spacing = realWidth / totalTime;
 
         var initialBlockLength = 120;
-        var timePerBlock = Math.pow(2, Math.floor( Math.log( totalTime / width * initialBlockLength ) / Math.LN2 ) );
+        var timePerBlock = Math.pow(2, Math.floor( Math.log( totalTime / realWidth * initialBlockLength ) / Math.LN2 ) );
         var pixelsPerBlock = timePerBlock * spacing;
         var pixelsPerSection = pixelsPerBlock / 5;
-        var blockCount = width / pixelsPerBlock;
+        var blockCount = realWidth / pixelsPerBlock;
 
         var realStartTime = Math.floor(startTime/timePerBlock) * timePerBlock;
-        var realStartPos = (startTime-realStartTime) * spacing;
+        var realStartPos = (startTime - realStartTime) * spacing - 1;
 
-        timePerPixel = timePerBlock/pixelsPerBlock;
+        var timePerPixel = timePerBlock/pixelsPerBlock;
 
         var initialColor = Math.floor(realStartTime/timePerBlock) % 2;
 
@@ -92,26 +96,15 @@ Canvas {
         context.lineTo(width, height-1);
         context.stroke();
 
-        // gradient borders
-        var gradientDark = "rgba(0, 0, 0, 0.53125)";
-        var gradientClear = "rgba(0, 0, 0, 0)";
-        var grad = context.createLinearGradient(0, 0, 0, 6);
-        grad.addColorStop(0,gradientDark);
-        grad.addColorStop(1,gradientClear);
-        context.fillStyle = grad;
-        context.fillRect(0, 0, width, 6);
+        // left border
+        context.fillStyle = "#858585";
+        context.fillRect(0, 0, 1, height);
+    }
 
-        grad = context.createLinearGradient(0, 0, 6, 0);
-        grad.addColorStop(0,gradientDark);
-        grad.addColorStop(1,gradientClear);
-        context.fillStyle = grad;
-        context.fillRect(0, 0, 6, height);
-
-        grad = context.createLinearGradient(width, 0, width-6, 0);
-        grad.addColorStop(0,gradientDark);
-        grad.addColorStop(1,gradientClear);
-        context.fillStyle = grad;
-        context.fillRect(width-6, 0, 6, height);
+    function clear()
+    {
+        startTime = endTime = 0;
+        requestPaint();
     }
 
     function prettyPrintTime( t )

@@ -44,6 +44,7 @@
 #include "openpagesmodel.h"
 #include "remotehelpfilter.h"
 #include "searchwidget.h"
+#include "searchtaskhandler.h"
 
 #include <bookmarkmanager.h>
 #include <contentwindow.h>
@@ -82,7 +83,6 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QMenu>
-#include <QShortcut>
 #include <QStackedLayout>
 #include <QSplitter>
 
@@ -174,6 +174,7 @@ bool HelpPlugin::initialize(const QStringList &arguments, QString *error)
     addAutoReleasedObject(m_docSettingsPage = new DocSettingsPage());
     addAutoReleasedObject(m_filterSettingsPage = new FilterSettingsPage());
     addAutoReleasedObject(m_generalSettingsPage = new GeneralSettingsPage());
+    addAutoReleasedObject(m_searchTaskHandler = new SearchTaskHandler);
 
     connect(m_generalSettingsPage, SIGNAL(fontChanged()), this,
         SLOT(fontChanged()));
@@ -183,6 +184,8 @@ bool HelpPlugin::initialize(const QStringList &arguments, QString *error)
         SLOT(updateCloseButton()));
     connect(HelpManager::instance(), SIGNAL(helpRequested(QUrl)), this,
         SLOT(handleHelpRequest(QUrl)));
+    connect(m_searchTaskHandler, SIGNAL(search(QUrl)), this,
+            SLOT(switchToHelpMode(QUrl)));
 
     connect(m_filterSettingsPage, SIGNAL(filtersChanged()), this,
         SLOT(setupHelpEngineIfNeeded()));
@@ -420,11 +423,10 @@ void HelpPlugin::setupUi()
         m_centralWidget, SLOT(showTopicChooser(QMap<QString,QUrl>,QString)));
 
     QMap<QString, Command*> shortcutMap;
-    QShortcut *shortcut = new QShortcut(m_splitter);
-    shortcut->setWhatsThis(tr("Activate Index in Help mode"));
-    Command *cmd = ActionManager::registerShortcut(shortcut, "Help.IndexShortcut", modecontext);
+    QAction *action = new QAction(tr("Activate Index in Help mode"), m_splitter);
+    Command *cmd = ActionManager::registerAction(action, "Help.IndexShortcut", modecontext);
     cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Meta+I") : tr("Ctrl+Shift+I")));
-    connect(shortcut, SIGNAL(activated()), this, SLOT(activateIndex()));
+    connect(action, SIGNAL(triggered()), this, SLOT(activateIndex()));
     shortcutMap.insert(QLatin1String(SB_INDEX), cmd);
 
     ContentWindow *contentWindow = new ContentWindow();
@@ -433,11 +435,10 @@ void HelpPlugin::setupUi()
     connect(contentWindow, SIGNAL(linkActivated(QUrl)), m_centralWidget,
         SLOT(setSource(QUrl)));
 
-    shortcut = new QShortcut(m_splitter);
-    shortcut->setWhatsThis(tr("Activate Contents in Help mode"));
-    cmd = ActionManager::registerShortcut(shortcut, "Help.ContentsShortcut", modecontext);
+    action = new QAction(tr("Activate Contents in Help mode"), m_splitter);
+    cmd = ActionManager::registerAction(action, "Help.ContentsShortcut", modecontext);
     cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Meta+Shift+C") : tr("Ctrl+Shift+C")));
-    connect(shortcut, SIGNAL(activated()), this, SLOT(activateContents()));
+    connect(action, SIGNAL(triggered()), this, SLOT(activateContents()));
     shortcutMap.insert(QLatin1String(SB_CONTENTS), cmd);
 
     SearchWidget *searchWidget = new SearchWidget();
@@ -446,11 +447,10 @@ void HelpPlugin::setupUi()
     connect(searchWidget, SIGNAL(linkActivated(QUrl)), m_centralWidget,
         SLOT(setSourceFromSearch(QUrl)));
 
-     shortcut = new QShortcut(m_splitter);
-     shortcut->setWhatsThis(tr("Activate Search in Help mode"));
-     cmd = ActionManager::registerShortcut(shortcut, "Help.SearchShortcut", modecontext);
+     action = new QAction(tr("Activate Search in Help mode"), m_splitter);
+     cmd = ActionManager::registerAction(action, "Help.SearchShortcut", modecontext);
      cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Meta+/") : tr("Ctrl+Shift+/")));
-     connect(shortcut, SIGNAL(activated()), this, SLOT(activateSearch()));
+     connect(action, SIGNAL(triggered()), this, SLOT(activateSearch()));
      shortcutMap.insert(QLatin1String(SB_SEARCH), cmd);
 
     BookmarkManager *manager = &LocalHelpManager::bookmarkManager();
@@ -462,22 +462,20 @@ void HelpPlugin::setupUi()
     connect(bookmarkWidget, SIGNAL(createPage(QUrl,bool)), &OpenPagesManager::instance(),
             SLOT(createPage(QUrl,bool)));
 
-     shortcut = new QShortcut(m_splitter);
-     shortcut->setWhatsThis(tr("Activate Bookmarks in Help mode"));
-     cmd = ActionManager::registerShortcut(shortcut, "Help.BookmarkShortcut", modecontext);
+     action = new QAction(tr("Activate Bookmarks in Help mode"), m_splitter);
+     cmd = ActionManager::registerAction(action, "Help.BookmarkShortcut", modecontext);
      cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Meta+B") : tr("Ctrl+Shift+B")));
-     connect(shortcut, SIGNAL(activated()), this, SLOT(activateBookmarks()));
+     connect(action, SIGNAL(triggered()), this, SLOT(activateBookmarks()));
      shortcutMap.insert(QLatin1String(SB_BOOKMARKS), cmd);
 
     QWidget *openPagesWidget = OpenPagesManager::instance().openPagesWidget();
     openPagesWidget->setWindowTitle(tr("Open Pages"));
     m_openPagesItem = new SideBarItem(openPagesWidget, QLatin1String(SB_OPENPAGES));
 
-    shortcut = new QShortcut(m_splitter);
-    shortcut->setWhatsThis(tr("Activate Open Pages in Help mode"));
-    cmd = ActionManager::registerShortcut(shortcut, "Help.PagesShortcut", modecontext);
+    action = new QAction(tr("Activate Open Pages in Help mode"), m_splitter);
+    cmd = ActionManager::registerAction(action, "Help.PagesShortcut", modecontext);
     cmd->setDefaultKeySequence(QKeySequence(UseMacShortcuts ? tr("Meta+O") : tr("Ctrl+Shift+O")));
-    connect(shortcut, SIGNAL(activated()), this, SLOT(activateOpenPages()));
+    connect(action, SIGNAL(triggered()), this, SLOT(activateOpenPages()));
     shortcutMap.insert(QLatin1String(SB_OPENPAGES), cmd);
 
     QList<SideBarItem*> itemList;
@@ -874,9 +872,12 @@ void HelpPlugin::activateContext()
         links = HelpManager::linksForIdentifier(m_idFromContext);
         if (links.isEmpty()) {
             // Maybe this is already an URL...
-            QUrl url(m_idFromContext);
-            if (url.isValid())
-                links.insert(m_idFromContext, m_idFromContext);
+            // Require protocol specifier, otherwise most strings would be 'local file names'
+            if (m_idFromContext.contains(QLatin1Char(':'))) {
+                QUrl url(m_idFromContext);
+                if (url.isValid())
+                    links.insert(m_idFromContext, m_idFromContext);
+            }
         }
     }
 

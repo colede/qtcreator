@@ -55,6 +55,7 @@ BlackBerryDebugTokenRequestDialog::BlackBerryDebugTokenRequestDialog(
     m_ui->progressBar->hide();
     m_ui->status->clear();
     m_ui->debugTokenPath->setExpectedKind(Utils::PathChooser::SaveFile);
+    m_ui->debugTokenPath->setHistoryCompleter(QLatin1String("BB.DebugToken.History"));
     m_ui->debugTokenPath->setPromptDialogTitle(tr("Request Debug Token"));
     m_ui->debugTokenPath->setPromptDialogFilter(tr("BAR Files (*.bar)"));
 
@@ -130,7 +131,7 @@ void BlackBerryDebugTokenRequestDialog::requestDebugToken()
 
     if (file.exists()) {
         const int result = QMessageBox::question(this, tr("Are you sure?"),
-                tr("The file '%1' will be overwritten. Do you want to proceed?")
+                tr("The file \"%1\" will be overwritten. Do you want to proceed?")
                 .arg(file.fileName()), QMessageBox::Yes | QMessageBox::No);
 
         if (result & QMessageBox::Yes) {
@@ -140,8 +141,6 @@ void BlackBerryDebugTokenRequestDialog::requestDebugToken()
             return;
         }
     }
-
-    BlackBerryConfigurationManager &configuration = BlackBerryConfigurationManager::instance();
 
     bool ok;
     const QString cskPassword = m_utils.cskPassword(this, &ok);
@@ -159,7 +158,7 @@ void BlackBerryDebugTokenRequestDialog::requestDebugToken()
     }
 
     m_requester->requestDebugToken(m_ui->debugTokenPath->path(),
-            cskPassword, configuration.defaultKeystorePath(),
+            cskPassword, BlackBerryConfigurationManager::instance()->defaultKeystorePath(),
             certificatePassword, m_ui->devicePin->text());
 }
 

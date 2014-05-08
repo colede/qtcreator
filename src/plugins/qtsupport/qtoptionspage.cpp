@@ -136,8 +136,9 @@ QtOptionsPageWidget::QtOptionsPageWidget(QWidget *parent)
             this, SLOT(setInfoWidgetVisibility()));
 
     // setup parent items for auto-detected and manual versions
-    m_ui->qtdirList->header()->setResizeMode(QHeaderView::ResizeToContents);
     m_ui->qtdirList->header()->setStretchLastSection(false);
+    m_ui->qtdirList->header()->setResizeMode(0, QHeaderView::ResizeToContents);
+    m_ui->qtdirList->header()->setResizeMode(1, QHeaderView::Stretch);
     m_ui->qtdirList->setTextElideMode(Qt::ElideNone);
     m_autoItem = new QTreeWidgetItem(m_ui->qtdirList);
     m_autoItem->setText(0, tr("Auto-detected"));
@@ -385,15 +386,21 @@ QtOptionsPageWidget::ValidityInfo QtOptionsPageWidget::validInformation(const Ba
 
 QList<ToolChain*> QtOptionsPageWidget::toolChains(const BaseQtVersion *version)
 {
-    QHash<QString,ToolChain*> toolChains;
+    QList<ToolChain*> toolChains;
     if (!version)
-        return toolChains.values();
+        return toolChains;
 
-    foreach (const Abi &a, version->qtAbis())
-        foreach (ToolChain *tc, ToolChainManager::findToolChains(a))
-            toolChains.insert(tc->id(), tc);
+    QSet<QString> ids;
+    foreach (const Abi &a, version->qtAbis()) {
+        foreach (ToolChain *tc, ToolChainManager::findToolChains(a)) {
+            if (ids.contains(tc->id()))
+                continue;
+            ids.insert(tc->id());
+            toolChains.append(tc);
+        }
+    }
 
-    return toolChains.values();
+    return toolChains;
 }
 
 QString QtOptionsPageWidget::defaultToolChainId(const BaseQtVersion *version)
@@ -441,7 +448,7 @@ void QtOptionsPageWidget::buildDebuggingHelper(DebuggingHelperBuildTask::Tools t
             this, SLOT(debuggingHelperBuildFinished(int,QString,DebuggingHelperBuildTask::Tools)),
             Qt::QueuedConnection);
     QFuture<void> task = QtConcurrent::run(&DebuggingHelperBuildTask::run, buildTask);
-    const QString taskName = tr("Building helpers");
+    const QString taskName = tr("Building Helpers");
 
     Core::ProgressManager::addTask(task, taskName, "QmakeProjectManager::BuildHelpers");
 }
@@ -486,7 +493,7 @@ void QtOptionsPageWidget::showDebuggingBuildLog(const QTreeWidgetItem *currentIt
     if (currentItemIndex < 0)
         return;
     BuildLogDialog *dialog = new BuildLogDialog(this->window());
-    dialog->setWindowTitle(tr("Debugging Helper Build Log for '%1'").arg(currentItem->text(0)));
+    dialog->setWindowTitle(tr("Debugging Helper Build Log for \"%1\"").arg(currentItem->text(0)));
     dialog->setText(currentItem->data(0, BuildLogRole).toString());
     dialog->show();
 }

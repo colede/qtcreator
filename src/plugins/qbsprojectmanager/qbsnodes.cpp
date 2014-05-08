@@ -227,7 +227,10 @@ QbsFileNode::QbsFileNode(const QString &filePath, const ProjectExplorer::FileTyp
 
 QString QbsFileNode::displayName() const
 {
-    return ProjectExplorer::FileNode::displayName() + QLatin1Char(':') + QString::number(line());
+    int l = line();
+    if (l < 0)
+        return ProjectExplorer::FileNode::displayName();
+    return ProjectExplorer::FileNode::displayName() + QLatin1Char(':') + QString::number(l);
 }
 
 bool QbsFileNode::update(const qbs::CodeLocation &loc)
@@ -247,7 +250,7 @@ QbsBaseProjectNode::QbsBaseProjectNode(const QString &path) :
     ProjectExplorer::ProjectNode(path)
 { }
 
-bool QbsBaseProjectNode::hasBuildTargets() const
+bool QbsBaseProjectNode::showInSimpleTree() const
 {
     return false;
 }
@@ -301,12 +304,6 @@ bool QbsBaseProjectNode::renameFile(const QString &filePath, const QString &newF
     Q_UNUSED(filePath);
     Q_UNUSED(newFilePath);
     return false;
-}
-
-QList<ProjectExplorer::RunConfiguration *> QbsBaseProjectNode::runConfigurationsFor(ProjectExplorer::Node *node)
-{
-    Q_UNUSED(node);
-    return QList<ProjectExplorer::RunConfiguration *>();
 }
 
 // --------------------------------------------------------------------
@@ -421,7 +418,14 @@ void QbsGroupNode::setupFolder(ProjectExplorer::FolderNode *root,
 
         // Handle files:
         if (c->isFile()) {
-            ProjectExplorer::FileNode *fn = root->findFile(path);
+            ProjectExplorer::FileNode *fn = 0;
+            foreach (ProjectExplorer::FileNode *f, root->fileNodes()) {
+                // There can be one match only here!
+                if (f->path() != path)
+                    continue;
+                fn = f;
+                break;
+            }
             if (fn) {
                 filesToRemove.removeOne(fn);
                 if (updateExisting)
@@ -432,7 +436,14 @@ void QbsGroupNode::setupFolder(ProjectExplorer::FolderNode *root,
             }
             continue;
         } else {
-            FolderNode *fn = root->findSubFolder(c->path());
+            ProjectExplorer::FolderNode *fn = 0;
+            foreach (ProjectExplorer::FolderNode *f, root->subFolderNodes()) {
+                // There can be one match only here!
+                if (f->path() != path)
+                    continue;
+                fn = f;
+                break;
+            }
             if (!fn) {
                 fn = new FolderNode(c->path());
                 root->addFolderNodes(QList<FolderNode *>() << fn);
@@ -476,7 +487,7 @@ bool QbsProductNode::isEnabled() const
     return m_qbsProductData.isEnabled();
 }
 
-bool QbsProductNode::hasBuildTargets() const
+bool QbsProductNode::showInSimpleTree() const
 {
     return true;
 }
@@ -531,9 +542,8 @@ void QbsProductNode::setQbsProductData(const qbs::ProductData prd)
         emitNodeUpdated();
 }
 
-QList<ProjectExplorer::RunConfiguration *> QbsProductNode::runConfigurationsFor(ProjectExplorer::Node *node)
+QList<ProjectExplorer::RunConfiguration *> QbsProductNode::runConfigurations() const
 {
-    Q_UNUSED(node);
     QList<ProjectExplorer::RunConfiguration *> result;
     QbsProjectNode *pn = qobject_cast<QbsProjectNode *>(projectNode());
     if (!isEnabled() || !pn || !pn->qbsProject().isValid()
@@ -567,7 +577,7 @@ QbsGroupNode *QbsProductNode::findGroupNode(const QString &name)
 // --------------------------------------------------------------------
 
 QbsProjectNode::QbsProjectNode(QbsProject *project) :
-    QbsBaseProjectNode(project->projectFilePath()),
+    QbsBaseProjectNode(project->projectFilePath().toString()),
     m_project(project)
 {
     ctor();
@@ -647,6 +657,11 @@ const qbs::Project QbsProjectNode::qbsProject() const
 const qbs::ProjectData QbsProjectNode::qbsProjectData() const
 {
     return m_qbsProjectData;
+}
+
+bool QbsProjectNode::showInSimpleTree() const
+{
+    return true;
 }
 
 void QbsProjectNode::ctor()

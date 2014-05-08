@@ -213,9 +213,9 @@ StateListener::StateListener(QObject *parent) :
     connect(Core::VcsManager::instance(), SIGNAL(repositoryChanged(QString)),
             this, SLOT(slotStateChanged()));
 
-    if (ProjectExplorer::ProjectExplorerPlugin *pe = ProjectExplorer::ProjectExplorerPlugin::instance())
-        connect(pe, SIGNAL(currentProjectChanged(ProjectExplorer::Project*)),
-                this, SLOT(slotStateChanged()));
+    connect(ProjectExplorer::ProjectExplorerPlugin::instance(),
+            SIGNAL(currentProjectChanged(ProjectExplorer::Project*)),
+            this, SLOT(slotStateChanged()));
 }
 
 static inline QString displayNameOfEditor(const QString &fileName)
@@ -285,7 +285,7 @@ void StateListener::slotStateChanged()
     // Check for project, find the control
     Core::IVersionControl *projectControl = 0;
     if (const ProjectExplorer::Project *currentProject = ProjectExplorer::ProjectExplorerPlugin::currentProject()) {
-        state.currentProjectPath = currentProject->projectDirectory();
+        state.currentProjectPath = currentProject->projectDirectory().toString();
         state.currentProjectName = currentProject->displayName();
         projectControl = Core::VcsManager::findVersionControlForDirectory(state.currentProjectPath,
                                                                     &state.currentProjectTopLevel);
@@ -567,8 +567,9 @@ void VcsBasePlugin::slotSubmitEditorAboutToClose(VcsBaseSubmitEditor *submitEdit
 {
     if (debug)
         qDebug() << this << "plugin's submit editor"
-                 << d->m_submitEditor << (d->m_submitEditor ? d->m_submitEditor->id().name() : "")
-                 << "closing submit editor" << submitEditor << submitEditor->id().name();
+                 << d->m_submitEditor << (d->m_submitEditor ? d->m_submitEditor->document()->id().name() : "")
+                 << "closing submit editor" << submitEditor
+                 << (submitEditor ? submitEditor->document()->id().name() : "");
     if (submitEditor == d->m_submitEditor)
         *result = submitEditorAboutToClose();
 }
@@ -632,8 +633,8 @@ void VcsBasePlugin::promptToDeleteCurrentFile()
     QTC_ASSERT(state.hasFile(), return);
     const bool rc = Core::VcsManager::promptToDelete(versionControl(), state.currentFile());
     if (!rc)
-        QMessageBox::warning(0, tr("Version Control"),
-                             tr("The file '%1' could not be deleted.").
+        QMessageBox::warning(Core::ICore::dialogParent(), tr("Version Control"),
+                             tr("The file \"%1\" could not be deleted.").
                              arg(QDir::toNativeSeparators(state.currentFile())),
                              QMessageBox::Ok);
 }
@@ -661,7 +662,7 @@ void VcsBasePlugin::createRepository()
         const Core::IVersionControl *managingControl = Core::VcsManager::findVersionControlForDirectory(directory);
         if (managingControl == 0)
             break;
-        const QString question = tr("The directory '%1' is already managed by a version control system (%2)."
+        const QString question = tr("The directory \"%1\" is already managed by a version control system (%2)."
                                     " Would you like to specify another directory?").arg(directory, managingControl->displayName());
 
         if (!ask(mw, tr("Repository already under version control"), question))
@@ -802,7 +803,7 @@ bool VcsBasePlugin::runPatch(const QByteArray &input, const QString &workingDire
     ow->appendCommand(workingDirectory, patch, args);
     patchProcess.start(patch, args);
     if (!patchProcess.waitForStarted()) {
-        ow->appendError(tr("Unable to launch '%1': %2").arg(patch, patchProcess.errorString()));
+        ow->appendError(tr("Unable to launch \"%1\": %2").arg(patch, patchProcess.errorString()));
         return false;
     }
     patchProcess.write(input);
@@ -811,7 +812,7 @@ bool VcsBasePlugin::runPatch(const QByteArray &input, const QString &workingDire
     QByteArray stdErr;
     if (!SynchronousProcess::readDataFromProcess(patchProcess, 30000, &stdOut, &stdErr, true)) {
         SynchronousProcess::stopProcess(patchProcess);
-        ow->appendError(tr("A timeout occurred running '%1'").arg(patch));
+        ow->appendError(tr("A timeout occurred running \"%1\"").arg(patch));
         return false;
 
     }
@@ -821,11 +822,11 @@ bool VcsBasePlugin::runPatch(const QByteArray &input, const QString &workingDire
         ow->appendError(QString::fromLocal8Bit(stdErr));
 
     if (patchProcess.exitStatus() != QProcess::NormalExit) {
-        ow->appendError(tr("'%1' crashed.").arg(patch));
+        ow->appendError(tr("\"%1\" crashed.").arg(patch));
         return false;
     }
     if (patchProcess.exitCode() != 0) {
-        ow->appendError(tr("'%1' failed (exit code %2).").arg(patch).arg(patchProcess.exitCode()));
+        ow->appendError(tr("\"%1\" failed (exit code %2).").arg(patch).arg(patchProcess.exitCode()));
         return false;
     }
     return true;

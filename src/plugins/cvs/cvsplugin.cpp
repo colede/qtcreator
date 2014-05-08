@@ -83,7 +83,7 @@ namespace Internal {
 
 static inline QString msgCannotFindTopLevel(const QString &f)
 {
-    return CvsPlugin::tr("Cannot find repository for '%1'").
+    return CvsPlugin::tr("Cannot find repository for \"%1\"").
             arg(QDir::toNativeSeparators(f));
 }
 
@@ -151,9 +151,9 @@ static inline QString debugCodec(const QTextCodec *c)
     return c ? QString::fromLatin1(c->name()) : QString::fromLatin1("Null codec");
 }
 
-static inline bool messageBoxQuestion(const QString &title, const QString &question, QWidget *parent = 0)
+static inline bool messageBoxQuestion(const QString &title, const QString &question)
 {
-    return QMessageBox::question(parent, title, question, QMessageBox::Yes|QMessageBox::No) == QMessageBox::Yes;
+    return QMessageBox::question(ICore::dialogParent(), title, question, QMessageBox::Yes|QMessageBox::No) == QMessageBox::Yes;
 }
 
 // ------------- CVSPlugin
@@ -579,7 +579,8 @@ void CvsPlugin::revertAll()
     if (revertResponse.result == CvsResponse::Ok)
         cvsVersionControl()->emitRepositoryChanged(state.topLevel());
     else
-        QMessageBox::warning(0, title, tr("Revert failed: %1").arg(revertResponse.message), QMessageBox::Ok);
+        QMessageBox::warning(ICore::dialogParent(), title,
+                             tr("Revert failed: %1").arg(revertResponse.message), QMessageBox::Ok);
 }
 
 void CvsPlugin::revertCurrentFile()
@@ -857,8 +858,8 @@ bool CvsPlugin::unedit(const QString &topLevel, const QStringList &files)
         return false;
     if (modified) {
         const QString question = files.isEmpty() ?
-                      tr("Would you like to discard your changes to the repository '%1'?").arg(topLevel) :
-                      tr("Would you like to discard your changes to the file '%1'?").arg(files.front());
+                      tr("Would you like to discard your changes to the repository \"%1\"?").arg(topLevel) :
+                      tr("Would you like to discard your changes to the file \"%1\"?").arg(files.front());
         if (!messageBoxQuestion(tr("Unedit"), question))
             return false;
     }
@@ -1031,7 +1032,7 @@ bool CvsPlugin::describe(const QString &toplevel, const QString &file, const
         // Describe all files found, pass on dir to obtain correct absolute paths.
         const QList<CvsLogEntry> repoEntries = parseLogEntries(repoLogResponse.stdOut, QString(), commitId);
         if (repoEntries.empty()) {
-            *errorMessage = tr("Could not find commits of id '%1' on %2.").arg(commitId, dateS);
+            *errorMessage = tr("Could not find commits of id \"%1\" on %2.").arg(commitId, dateS);
             return false;
         }
         return describe(toplevel, repoEntries, errorMessage);
@@ -1169,7 +1170,9 @@ IEditor *CvsPlugin::showOutputInEditor(const QString& title, const QString &outp
         qDebug() << "CVSPlugin::showOutputInEditor" << title << id.name()
                  <<  "source=" << source << "Size= " << output.size() <<  " Type=" << editorType << debugCodec(codec);
     QString s = title;
-    IEditor *editor = EditorManager::openEditorWithContents(id, &s, output.toUtf8());
+    IEditor *editor = EditorManager::openEditorWithContents(id, &s, output.toUtf8(),
+                                                            (EditorManager::OpenInOtherSplit
+                                                             | EditorManager::NoNewSplits));
     connect(editor, SIGNAL(annotateRevisionRequested(QString,QString,QString,int)),
             this, SLOT(vcsAnnotate(QString,QString,QString,int)));
     CvsEditor *e = qobject_cast<CvsEditor*>(editor->widget());
@@ -1182,7 +1185,6 @@ IEditor *CvsPlugin::showOutputInEditor(const QString& title, const QString &outp
         e->setSource(source);
     if (codec)
         e->setCodec(codec);
-    EditorManager::activateEditor(editor);
     return editor;
 }
 

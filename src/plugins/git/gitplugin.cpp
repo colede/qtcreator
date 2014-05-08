@@ -145,7 +145,7 @@ GitPlugin::GitPlugin() :
     Q_UNUSED(mid)
     m_fileActions.reserve(10);
     m_projectActions.reserve(10);
-    m_repositoryActions.reserve(15);
+    m_repositoryActions.reserve(50);
 }
 
 GitPlugin::~GitPlugin()
@@ -661,10 +661,8 @@ bool GitPlugin::initialize(const QStringList &arguments, QString *errorMessage)
     // --------------
     gitContainer->addSeparator(globalcontext);
 
-    QAction *changesAction = new QAction(tr("Actions on Commits..."), this);
-    Core::Command *changesCommand = Core::ActionManager::registerAction(changesAction, "Git.ChangeActions", globalcontext);
-    connect(changesAction, SIGNAL(triggered()), this, SLOT(startChangeRelatedAction()));
-    gitContainer->addAction(changesCommand);
+    createRepositoryAction(gitContainer, tr("Actions on Commits..."), "Git.ChangeActions",
+                           globalcontext, false, SLOT(startChangeRelatedAction()));
 
     QAction *repositoryAction = new QAction(tr("Create Repository..."), this);
     Core::Command *createRepositoryCommand = Core::ActionManager::registerAction(repositoryAction, "Git.CreateRepository", globalcontext);

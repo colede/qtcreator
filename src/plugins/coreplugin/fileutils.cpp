@@ -65,8 +65,8 @@ static void showGraphicalShellError(QWidget *parent, const QString &app, const Q
     QMessageBox mbox(QMessageBox::Warning, title, msg, QMessageBox::Close, parent);
     if (!error.isEmpty())
         mbox.setDetailedText(QApplication::translate("Core::Internal",
-                                                     "'%1' returned the following error:\n\n%2").arg(app, error));
-    QAbstractButton *settingsButton = mbox.addButton(QApplication::translate("Core::Internal", "Settings..."),
+                                                     "\"%1\" returned the following error:\n\n%2").arg(app, error));
+    QAbstractButton *settingsButton = mbox.addButton(Core::ICore::msgShowOptionsDialog(),
                                                      QMessageBox::ActionRole);
     mbox.exec();
     if (mbox.clickedButton() == settingsButton)

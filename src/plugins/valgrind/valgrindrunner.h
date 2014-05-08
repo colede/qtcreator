@@ -58,6 +58,7 @@ public:
     QString valgrindExecutable() const;
     void setValgrindExecutable(const QString &executable);
     QStringList valgrindArguments() const;
+    QStringList fullValgrindArguments() const;
     void setValgrindArguments(const QStringList &toolArguments);
     QString debuggeeExecutable() const;
     void setDebuggeeExecutable(const QString &executable);
@@ -88,7 +89,7 @@ protected:
     virtual QString tool() const = 0;
 
 signals:
-    void processOutputReceived(const QByteArray &, Utils::OutputFormat);
+    void processOutputReceived(const QString &, Utils::OutputFormat);
     void processErrorReceived(const QString &, QProcess::ProcessError);
     void started();
     void finished();
@@ -97,6 +98,7 @@ protected slots:
     virtual void processError(QProcess::ProcessError);
     virtual void processStarted();
     virtual void processFinished(int, QProcess::ExitStatus);
+    virtual void localHostAddressRetrieved(const QHostAddress &localHostAddress);
 
 private:
     class Private;

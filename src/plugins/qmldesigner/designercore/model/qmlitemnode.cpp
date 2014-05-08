@@ -42,7 +42,6 @@
 #include "modelmerger.h"
 #include "rewritingexception.h"
 
-#include <QMessageBox>
 #include <QUrl>
 #include <QPlainTextEdit>
 #include <QFileInfo>
@@ -97,6 +96,13 @@ QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibrary
 
     Q_ASSERT(parentQmlItemNode.isValid());
 
+    NodeAbstractProperty parentProperty = parentQmlItemNode.defaultNodeAbstractProperty();
+
+    return  QmlItemNode::createQmlItemNode(view, itemLibraryEntry, position, parentProperty);
+}
+
+QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibraryEntry &itemLibraryEntry, const QPointF &position, NodeAbstractProperty parentproperty)
+{
     QmlItemNode newQmlItemNode;
 
     try {
@@ -106,34 +112,6 @@ QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibrary
 
         int minorVersion = metaInfo.minorVersion();
         int majorVersion = metaInfo.majorVersion();
-
-        if (itemLibraryEntry.typeName().contains('.')) {
-
-            const QString newImportUrl = itemLibraryEntry.requiredImport();
-
-            if (!itemLibraryEntry.requiredImport().isEmpty()) {
-                const QString newImportVersion = QString("%1.%2").arg(QString::number(itemLibraryEntry.majorVersion()), QString::number(itemLibraryEntry.minorVersion()));
-
-                Import newImport = Import::createLibraryImport(newImportUrl, newImportVersion);
-                if (itemLibraryEntry.majorVersion() == -1 && itemLibraryEntry.minorVersion() == -1)
-                    newImport = Import::createFileImport(newImportUrl, QString());
-                else
-                    newImport = Import::createLibraryImport(newImportUrl, newImportVersion);
-
-                foreach (const Import &import, view->model()->imports()) {
-                    if (import.isLibraryImport()
-                            && import.url() == newImport.url()
-                            && import.version() == newImport.version()) {
-                        // reuse this import
-                        newImport = import;
-                        break;
-                    }
-                }
-
-                if (!view->model()->hasImport(newImport, true, true))
-                    view->model()->changeImports(QList<Import>() << newImport, QList<Import>());
-            }
-        }
 
         typedef QPair<PropertyName, QString> PropertyBindingEntry;
         QList<PropertyBindingEntry> propertyBindingList;
@@ -155,8 +133,8 @@ QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibrary
             newQmlItemNode = createQmlItemNodeFromSource(view, itemLibraryEntry.qmlSource(), position);
         }
 
-        if (parentQmlItemNode.hasDefaultPropertyName())
-            parentQmlItemNode.nodeAbstractProperty(parentQmlItemNode.defaultPropertyName()).reparentHere(newQmlItemNode);
+        if (parentproperty.isValid())
+            parentproperty.reparentHere(newQmlItemNode);
 
         if (!newQmlItemNode.isValid())
             return newQmlItemNode;
@@ -174,7 +152,7 @@ QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibrary
         Q_ASSERT(newQmlItemNode.isValid());
     }
     catch (RewritingException &e) {
-        QMessageBox::warning(0, "Error", e.description());
+        e.showException();
     }
 
     Q_ASSERT(newQmlItemNode.isValid());
@@ -182,35 +160,22 @@ QmlItemNode QmlItemNode::createQmlItemNode(AbstractView *view, const ItemLibrary
     return newQmlItemNode;
 }
 
-static void checkImageImport(AbstractView *view)
-{
-    const QString newImportUrl = QLatin1String("QtQuick");
-    const QString newImportVersion = QLatin1String("1.1");
-    Import newImport = Import::createLibraryImport(newImportUrl, newImportVersion);
-
-    foreach (const Import &import, view->model()->imports()) {
-        if (import.isLibraryImport()
-            && import.url() == newImport.url()) {
-            // reuse this import
-            newImport = import;
-            break;
-        }
-    }
-
-    if (!view->model()->hasImport(newImport, true, true))
-        view->model()->changeImports(QList<Import>() << newImport, QList<Import>());
-}
-
 QmlItemNode QmlItemNode::createQmlItemNodeFromImage(AbstractView *view, const QString &imageName, const QPointF &position, QmlItemNode parentQmlItemNode)
 {
-    QmlItemNode newQmlItemNode;
     if (!parentQmlItemNode.isValid())
         parentQmlItemNode = QmlItemNode(view->rootModelNode());
 
-    if (parentQmlItemNode.isValid()) {
-        RewriterTransaction transaction = view->beginRewriterTransaction(QByteArrayLiteral("QmlItemNode::createQmlItemNodeFromImage"));
+    NodeAbstractProperty parentProperty = parentQmlItemNode.defaultNodeAbstractProperty();
 
-        checkImageImport(view);
+    return QmlItemNode::createQmlItemNodeFromImage(view, imageName, position, parentProperty);
+}
+
+QmlItemNode QmlItemNode::createQmlItemNodeFromImage(AbstractView *view, const QString &imageName, const QPointF &position, NodeAbstractProperty parentproperty)
+{
+    QmlItemNode newQmlItemNode;
+
+    if (parentproperty.isValid()) {
+        RewriterTransaction transaction = view->beginRewriterTransaction(QByteArrayLiteral("QmlItemNode::createQmlItemNodeFromImage"));
 
         if (view->model()->hasNodeMetaInfo("QtQuick.Image")) {
             NodeMetaInfo metaInfo = view->model()->metaInfo("QtQuick.Image");
@@ -228,7 +193,7 @@ QmlItemNode QmlItemNode::createQmlItemNodeFromImage(AbstractView *view, const QS
             }
 
             newQmlItemNode = QmlItemNode(view->createModelNode("QtQuick.Image", metaInfo.majorVersion(), metaInfo.minorVersion(), propertyPairList));
-            parentQmlItemNode.defaultNodeAbstractProperty().reparentHere(newQmlItemNode);
+            parentproperty.reparentHere(newQmlItemNode);
 
             newQmlItemNode.setId(view->generateNewId("image"));
 
@@ -241,7 +206,6 @@ QmlItemNode QmlItemNode::createQmlItemNodeFromImage(AbstractView *view, const QS
         }
         Q_ASSERT(newQmlItemNode.isValid());
     }
-
 
     return newQmlItemNode;
 }
@@ -331,7 +295,7 @@ QList<QmlObjectNode> QmlItemNode::resources() const
 
 QList<QmlObjectNode> QmlItemNode::allDirectSubNodes() const
 {
-    return toQmlObjectNodeList(modelNode().allDirectSubModelNodes());
+    return toQmlObjectNodeList(modelNode().directSubModelNodes());
 }
 
 QmlAnchors QmlItemNode::anchors() const
@@ -591,7 +555,7 @@ QList<QmlItemNode> toQmlItemNodeList(const QList<ModelNode> &modelNodeList)
 
 const QList<QmlItemNode> QmlItemNode::allDirectSubModelNodes() const
 {
-    return toQmlItemNodeList(modelNode().allDirectSubModelNodes());
+    return toQmlItemNodeList(modelNode().directSubModelNodes());
 }
 
 const QList<QmlItemNode> QmlItemNode::allSubModelNodes() const
@@ -606,10 +570,14 @@ bool QmlItemNode::hasAnySubModelNodes() const
 
 void QmlItemNode::setPosition(const QPointF &position)
 {
-    if (!hasBindingProperty("x") && !anchors().instanceHasAnchor(AnchorLine::Left))
+    if (!hasBindingProperty("x")
+            && !anchors().instanceHasAnchor(AnchorLineLeft)
+            && !anchors().instanceHasAnchor(AnchorLineHorizontalCenter))
         setVariantProperty("x", qRound(position.x()));
 
-    if (!hasBindingProperty("y") && !anchors().instanceHasAnchor(AnchorLine::Top))
+    if (!hasBindingProperty("y")
+            && !anchors().instanceHasAnchor(AnchorLineTop)
+            && !anchors().instanceHasAnchor(AnchorLineVerticalCenter))
         setVariantProperty("y", qRound(position.y()));
 }
 
@@ -621,10 +589,10 @@ void QmlItemNode::setPostionInBaseState(const QPointF &position)
 
 void QmlItemNode::setSize(const QSizeF &size)
 {
-    if (!hasBindingProperty("width") && !anchors().instanceHasAnchor(AnchorLine::Right))
+    if (!hasBindingProperty("width") && !anchors().instanceHasAnchor(AnchorLineRight))
         setVariantProperty("width", qRound(size.width()));
 
-    if (!hasBindingProperty("height") && !anchors().instanceHasAnchor(AnchorLine::Bottom))
+    if (!hasBindingProperty("height") && !anchors().instanceHasAnchor(AnchorLineBottom))
         setVariantProperty("height", qRound(size.height()));
 }
 

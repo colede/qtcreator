@@ -28,8 +28,8 @@
 ****************************************************************************/
 
 #include "resourcenode.h"
-#include "resourcefile_p.h"
 #include "resourceeditorconstants.h"
+#include "qrceditor/resourcefile_p.h"
 
 #include <utils/fileutils.h>
 
@@ -45,17 +45,17 @@
 using namespace ResourceEditor;
 using namespace ResourceEditor::Internal;
 
-static int priority(const QStringList &files)
+static bool priority(const QStringList &files)
 {
     if (files.isEmpty())
-        return -1;
+        return false;
     Core::MimeType mt = Core::MimeDatabase::findByFile(files.at(0));
     QString type = mt.type();
     if (type.startsWith(QLatin1String("image/"))
             || type == QLatin1String(QmlJSTools::Constants::QML_MIMETYPE)
             || type == QLatin1String(QmlJSTools::Constants::JS_MIMETYPE))
-        return 120;
-    return 80;
+        return true;
+    return false;
 }
 
 static bool addFilesToResource(const QString &resourceFile, const QStringList &filePaths, QStringList *notAdded,
@@ -98,15 +98,6 @@ static bool sortByPrefixAndLang(ProjectExplorer::FolderNode *a, ProjectExplorer:
     if (bb->prefix() < aa->prefix())
         return false;
     return aa->lang() < bb->lang();
-}
-
-static bool equalByPrefixAndLang(ProjectExplorer::FolderNode *a, ProjectExplorer::FolderNode *b)
-{
-    ResourceFolderNode *aa = static_cast<ResourceFolderNode *>(a);
-    ResourceFolderNode *bb = static_cast<ResourceFolderNode *>(b);
-
-    return aa->prefix() == bb->prefix()
-            && aa->lang() == bb->lang();
 }
 
 static bool sortNodesByPath(ProjectExplorer::Node *a, ProjectExplorer::Node *b)
@@ -159,14 +150,19 @@ void ResourceTopLevelNode::update()
             int filecount = file.fileCount(i);
             for (int j = 0; j < filecount; ++j) {
                 const QString &fileName = file.file(i, j);
+                QString alias = file.alias(i, j);
+                if (alias.isEmpty()) {
+                    alias = QFileInfo(path()).absoluteDir().relativeFilePath(fileName);
+                }
                 if (fileNames.contains(fileName)) {
                     // The file name is duplicated, skip it
                     // Note: this is wrong, but the qrceditor doesn't allow it either
                     // only aliases need to be unique
                 } else {
+                    const QString qrcPath = QDir::cleanPath(prefix + QLatin1Char('/') + alias);
                     fileNames.insert(fileName);
                     filesToAdd[qMakePair(prefix, lang)]
-                            << new ResourceFileNode(fileName, this);
+                            << new ResourceFileNode(fileName, qrcPath, this);
                 }
 
             }
@@ -228,8 +224,6 @@ bool ResourceTopLevelNode::addPrefix(const QString &prefix, const QString &lang)
     file.save();
     Core::DocumentManager::unexpectFileChange(path());
 
-    update();
-
     return true;
 }
 
@@ -245,20 +239,38 @@ bool ResourceTopLevelNode::removePrefix(const QString &prefix, const QString &la
             Core::DocumentManager::expectFileChange(path());
             file.save();
             Core::DocumentManager::unexpectFileChange(path());
-
-            update();
             return true;
         }
     }
     return false;
 }
 
-ProjectExplorer::FolderNode::AddNewInformation ResourceTopLevelNode::addNewInformation(const QStringList &files) const
+ProjectExplorer::FolderNode::AddNewInformation ResourceTopLevelNode::addNewInformation(const QStringList &files, Node *context) const
 {
     QString name = tr("%1 Prefix: %2")
             .arg(QFileInfo(path()).fileName())
             .arg(QLatin1String("/"));
-    return AddNewInformation(name, priority(files) + 1);
+
+    int p = 80;
+    if (priority(files)) {
+        if (context == 0 || context == this)
+            p = 125;
+        else if (projectNode() == context)
+            p = 150; // steal from our project node
+        // The ResourceFolderNode '/' defers to us, as otherwise
+        // two nodes would be responsible for '/'
+        // Thus also return a high priority for it
+        if (ResourceFolderNode *rfn = qobject_cast<ResourceFolderNode *>(context))
+            if (rfn->prefix() == QLatin1String("/"))
+                p = 150;
+    }
+
+    return AddNewInformation(name, p);
+}
+
+bool ResourceTopLevelNode::showInSimpleTree() const
+{
+    return true;
 }
 
 ResourceFolderNode::ResourceFolderNode(const QString &prefix, const QString &lang, ResourceTopLevelNode *parent)
@@ -353,7 +365,7 @@ bool ResourceFolderNode::renamePrefix(const QString &prefix, const QString &lang
     ResourceFile file(m_topLevelNode->path());
     if (!file.load())
         return false;
-    int index = file.indexOfPrefix(prefix, lang);
+    int index = file.indexOfPrefix(m_prefix, m_lang);
     if (index == -1)
         return false;
 
@@ -366,12 +378,19 @@ bool ResourceFolderNode::renamePrefix(const QString &prefix, const QString &lang
     return true;
 }
 
-ProjectExplorer::FolderNode::AddNewInformation ResourceFolderNode::addNewInformation(const QStringList &files) const
+ProjectExplorer::FolderNode::AddNewInformation ResourceFolderNode::addNewInformation(const QStringList &files, Node *context) const
 {
     QString name = tr("%1 Prefix: %2")
             .arg(QFileInfo(m_topLevelNode->path()).fileName())
             .arg(displayName());
-    return AddNewInformation(name, priority(files) + 1);
+
+    int p = 80;
+    if (priority(files)) {
+        if (context == 0 || context == this)
+            p = 120;
+    }
+
+    return AddNewInformation(name, p);
 }
 
 QString ResourceFolderNode::displayName() const
@@ -416,6 +435,7 @@ void ResourceFolderNode::updateFiles(QList<ProjectExplorer::FileNode *> newList)
 ResourceFileWatcher::ResourceFileWatcher(ResourceTopLevelNode *node)
     : IDocument(node), m_node(node)
 {
+    setId("ResourceNodeWatcher");
     setFilePath(node->path());
 }
 
@@ -469,9 +489,10 @@ bool ResourceFileWatcher::reload(QString *errorString, ReloadFlag flag, ChangeTy
     return true;
 }
 
-ResourceFileNode::ResourceFileNode(const QString &filePath, ResourceTopLevelNode *topLevel)
+ResourceFileNode::ResourceFileNode(const QString &filePath, const QString &qrcPath, ResourceTopLevelNode *topLevel)
     : ProjectExplorer::FileNode(filePath, ProjectExplorer::UnknownFileType, false),
-      m_topLevel(topLevel)
+      m_topLevel(topLevel),
+      m_qrcPath(qrcPath)
 
 {
     QString baseDir = QFileInfo(topLevel->path()).absolutePath();
@@ -481,4 +502,9 @@ ResourceFileNode::ResourceFileNode(const QString &filePath, ResourceTopLevelNode
 QString ResourceFileNode::displayName() const
 {
     return m_displayName;
+}
+
+QString ResourceFileNode::qrcPath() const
+{
+    return m_qrcPath;
 }

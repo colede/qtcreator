@@ -51,10 +51,10 @@ Rectangle {
 
         y: 52
 
-        anchors.right: comboBox.left
-        anchors.rightMargin: 20
-        anchors.left: parent.left
-        anchors.leftMargin: 60
+        anchors.left: comboBox.right
+        anchors.rightMargin: 52
+        anchors.right: parent.right
+        anchors.leftMargin: 18
 
         placeholderText: qsTr("Search in Examples...")
         onTextChanged: examplesModel.parseSearchString(text)
@@ -66,9 +66,9 @@ Rectangle {
         anchors.verticalCenter: searchBar.verticalCenter
 
         width: 200
-        anchors.rightMargin: 80
-        anchors.right: parent.right
-        model: qtVersionModel
+        anchors.leftMargin: 46
+        anchors.left: parent.left
+        model: exampleSetModel
         textRole: "text"
 
 
@@ -76,16 +76,16 @@ Rectangle {
             if (comboBox.model === undefined)
                 return;
 
-            examplesModel.filterForQtById(comboBox.model.getId(currentIndex))
+            examplesModel.filterForExampleSet(currentIndex)
         }
 
-        property int qtIndex: examplesModel.qtVersionIndex
+        property int theIndex: examplesModel.exampleSetIndex
 
-        onQtIndexChanged: {
+        onTheIndexChanged: {
             if (comboBox.model === undefined)
                 return;
-            if (qtIndex != currentIndex)
-                currentIndex = qtIndex;
+            if (theIndex != currentIndex)
+                currentIndex = theIndex;
         }
     }
 

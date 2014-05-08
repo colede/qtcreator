@@ -70,6 +70,7 @@ public:
     enum Anchor {TopLeft = 0, TopRight, BottomLeft, BottomRight} anchor;
     BaseTextBlockSelection():firstVisualColumn(0), lastVisualColumn(0), anchor(BottomRight){}
     void moveAnchor(int blockNumber, int visualColumn);
+    int position(const TabSettings &ts) const;
     inline int anchorColumnNumber() const { return (anchor % 2) ? lastVisualColumn : firstVisualColumn; }
     inline int anchorBlockNumber() const {
         return (anchor <= TopRight ? firstBlock.blockNumber() : lastBlock.blockNumber()); }
@@ -107,23 +108,15 @@ public:
 
     void print(QPrinter *printer);
 
-    QTextBlock m_firstVisible;
-    int m_lastScrollPos;
-    int m_lineNumber;
-
     BaseTextEditorWidget *q;
     bool m_contentsChanged;
     bool m_lastCursorChangeWasInteresting;
-
-    QList<QTextEdit::ExtraSelection> m_syntaxHighlighterSelections;
-    QTextEdit::ExtraSelection m_lineSelection;
 
     QSharedPointer<BaseTextDocument> m_document;
     QByteArray m_tempState;
     QByteArray m_tempNavigationState;
 
     bool m_parenthesesMatchingEnabled;
-    QTimer *m_updateTimer;
 
     // parentheses matcher
     bool m_formatRange;

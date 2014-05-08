@@ -76,9 +76,9 @@ private slots:
     void selectEditor(QTreeWidgetItem *item);
 
 private:
-    static void updateItem(QTreeWidgetItem *item, IEditor *editor);
     void addHistoryItems(const QList<EditLocation> &history, EditorView *view,
                          DocumentModel *model, QSet<IDocument*> &documentsDone);
+    void addRestoredItems(DocumentModel *model);
     void ensureCurrentVisible();
     bool isCentering();
     void centerOnItem(int selectedIndex);

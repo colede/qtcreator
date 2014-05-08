@@ -35,11 +35,6 @@
 #include <QFileInfo>
 
 #include <utils/qtcassert.h>
-#include <utils/winutils.h>
-
-#ifdef Q_OS_WIN
-#    include <qt_windows.h>
-#endif
 
 namespace Valgrind {
 
@@ -84,6 +79,26 @@ bool ValgrindProcess::isRunning() const
         return m_remote.m_process && m_remote.m_process->isRunning();
 }
 
+void ValgrindProcess::setValgrindExecutable(const QString &valgrindExecutable)
+{
+    m_valgrindExecutable = valgrindExecutable;
+}
+
+void ValgrindProcess::setValgrindArguments(const QStringList &valgrindArguments)
+{
+    m_valgrindArguments = valgrindArguments;
+}
+
+void ValgrindProcess::setDebuggeeExecutable(const QString &debuggeeExecutable)
+{
+    m_debuggeeExecutable = debuggeeExecutable;
+}
+
+void ValgrindProcess::setDebugeeArguments(const QString &debuggeeArguments)
+{
+    m_debuggeeArguments = debuggeeArguments;
+}
+
 void ValgrindProcess::setEnvironment(const Utils::Environment &environment)
 {
     if (isLocal())
@@ -113,13 +128,8 @@ void ValgrindProcess::close()
     }
 }
 
-void ValgrindProcess::run(const QString &valgrindExecutable, const QStringList &valgrindArguments,
-                                const QString &debuggeeExecutable, const QString &debuggeeArguments)
+void ValgrindProcess::run()
 {
-    Utils::QtcProcess::addArgs(&m_arguments, valgrindArguments);
-    Utils::QtcProcess::addArg(&m_arguments, debuggeeExecutable);
-    Utils::QtcProcess::addArgs(&m_arguments, debuggeeArguments);
-
     if (isLocal()) {
         connect(&m_localProcess, SIGNAL(finished(int,QProcess::ExitStatus)),
                 this, SIGNAL(finished(int,QProcess::ExitStatus)));
@@ -132,13 +142,14 @@ void ValgrindProcess::run(const QString &valgrindExecutable, const QStringList &
         connect(&m_localProcess, SIGNAL(readyReadStandardOutput()),
                 this, SLOT(handleReadyReadStandardOutput()));
 
-        m_localProcess.setCommand(valgrindExecutable, m_arguments);
+        m_localProcess.setCommand(m_valgrindExecutable,
+                                  argumentString(Utils::HostOsInfo::hostOs()));
         m_localProcess.start();
         m_localProcess.waitForStarted();
         m_pid = Utils::qPidToPid(m_localProcess.pid());
     } else {
-        m_remote.m_valgrindExe = valgrindExecutable;
-        m_remote.m_debuggee = debuggeeExecutable;
+        m_remote.m_valgrindExe = m_valgrindExecutable;
+        m_remote.m_debuggee = m_debuggeeExecutable;
 
         // connect to host and wait for connection
         if (!m_remote.m_connection)
@@ -147,7 +158,7 @@ void ValgrindProcess::run(const QString &valgrindExecutable, const QStringList &
         if (m_remote.m_connection->state() != QSsh::SshConnection::Connected) {
             connect(m_remote.m_connection, SIGNAL(connected()), this, SLOT(connected()));
             connect(m_remote.m_connection, SIGNAL(error(QSsh::SshError)),
-                    this, SLOT(handelError(QSsh::SshError)));
+                    this, SLOT(handleError(QSsh::SshError)));
             if (m_remote.m_connection->state() == QSsh::SshConnection::Unconnected)
                 m_remote.m_connection->connectToHost();
         } else {
@@ -174,8 +185,7 @@ QProcess::ProcessError ValgrindProcess::error() const
 
 void ValgrindProcess::handleError(QSsh::SshError error)
 {
-    if (isLocal()) {
-    } else {
+    if (!isLocal()) {
         switch (error) {
             case QSsh::SshTimeoutError:
                 m_remote.m_error = QProcess::Timedout;
@@ -202,7 +212,7 @@ void ValgrindProcess::handleReadyReadStandardError()
     else
         b = m_remote.m_process->readAllStandardError();
     if (!b.isEmpty())
-        emit processOutput(b, Utils::StdErrFormat);
+        emit processOutput(QString::fromLocal8Bit(b), Utils::StdErrFormat);
 }
 
 void ValgrindProcess::handleReadyReadStandardOutput()
@@ -213,7 +223,7 @@ void ValgrindProcess::handleReadyReadStandardOutput()
     else
         b = m_remote.m_process->readAllStandardOutput();
     if (!b.isEmpty())
-        emit processOutput(b, Utils::StdOutFormat);
+        emit processOutput(QString::fromLocal8Bit(b), Utils::StdOutFormat);
 }
 
 /// Remote
@@ -221,13 +231,15 @@ void ValgrindProcess::connected()
 {
     QTC_ASSERT(m_remote.m_connection->state() == QSsh::SshConnection::Connected, return);
 
+    emit localHostAddressRetrieved(m_remote.m_connection->connectionInfo().localAddress);
+
     // connected, run command
     QString cmd;
 
     if (!m_remote.m_workingDir.isEmpty())
         cmd += QString::fromLatin1("cd '%1' && ").arg(m_remote.m_workingDir);
 
-    cmd += m_remote.m_valgrindExe + QLatin1Char(' ') + m_arguments;
+    cmd += m_remote.m_valgrindExe + QLatin1Char(' ') + argumentString(Utils::OsTypeLinux);
 
     m_remote.m_process = m_remote.m_connection->createRemoteProcess(cmd.toUtf8());
     connect(m_remote.m_process.data(), SIGNAL(readyReadStandardError()),
@@ -291,6 +303,14 @@ void ValgrindProcess::findPIDOutputReceived()
     } else {
         emit started();
     }
+}
+
+QString ValgrindProcess::argumentString(Utils::OsType osType) const
+{
+    QString arguments = Utils::QtcProcess::joinArgs(m_valgrindArguments, osType);
+    Utils::QtcProcess::addArg(&arguments, m_debuggeeExecutable, osType);
+    Utils::QtcProcess::addArg(&arguments, m_debuggeeArguments, osType);
+    return arguments;
 }
 
 

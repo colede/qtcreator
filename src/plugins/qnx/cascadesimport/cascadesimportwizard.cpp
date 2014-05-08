@@ -124,11 +124,6 @@ CascadesImportWizard::CascadesImportWizard()
     setDisplayCategory(QLatin1String(ProjectExplorer::Constants::IMPORT_WIZARD_CATEGORY_DISPLAY));
 }
 
-Core::BaseFileWizard::ExtensionList CascadesImportWizard::extensions() const
-{
-    return Core::BaseFileWizard::ExtensionList();
-}
-
 QWizard *CascadesImportWizard::createWizardDialog(QWidget *parent,
         const Core::WizardDialogParameters &wizardDialogParameters) const
 {
@@ -265,7 +260,7 @@ Core::GeneratedFiles CascadesImportWizard::generateFiles(const QWizard *w, QStri
                         files << file;
                 }
                 if (!errorMessage.isEmpty()) {
-                    errorMessage = tr("Error generating file '%1': %2").arg(filePath).arg(errorMessage);
+                    errorMessage = tr("Error generating file \"%1\": %2").arg(filePath).arg(errorMessage);
                     break;
                 }
             }

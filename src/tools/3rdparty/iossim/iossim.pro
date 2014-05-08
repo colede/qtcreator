@@ -1,7 +1,8 @@
 CONFIG   += console
 
-QT       += core
-QT       += gui
+QT       -= core
+QT       -= gui
+QT       -= test
 
 CONFIG -= app_bundle
 
@@ -26,10 +27,10 @@ iPhoneSimulatorRemoteClientDirectLinking {
     -F/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks \
     -F/Applications/Xcode.app/Contents/OtherFrameworks
   LIBS += \
-    -framework iPhoneSimulatorRemoteClient
+    -framework DTViPhoneSimulatorRemoteClient
   QMAKE_RPATHDIR += /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks \
-    /Applications/Xcode.app/Contents/OtherFrameworks
-    /System/Library/PrivateFrameworks \
+    /Applications/Xcode.app/Contents/OtherFrameworks \
+    /System/Library/PrivateFrameworks
 }
 
 TEMPLATE = app
@@ -49,7 +50,7 @@ HEADERS += \
   nsprintf.h \
   nsstringexpandpath.h \
   version.h \
-  iphonesimulatorremoteclient/iphonesimulatorremoteclient.h
+  dvtiphonesimulatorremoteclient/dvtiphonesimulatorremoteclient.h
 
 OTHER_FILES = IOSSIM_LICENSE \
   Info.plist

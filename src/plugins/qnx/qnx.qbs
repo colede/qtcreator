@@ -1,10 +1,9 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
 QtcPlugin {
     name: "Qnx"
-    provider: "BlackBerry"
 
     Depends { name: "Qt"; submodules: ["widgets", "xml", "network"] }
     Depends { name: "QtcSsh" }
@@ -52,6 +51,10 @@ QtcPlugin {
         "bardescriptoreditorpermissionswidget.ui",
         "bardescriptoreditorwidget.cpp",
         "bardescriptoreditorwidget.h",
+        "bardescriptorfilenode.cpp",
+        "bardescriptorfilenode.h",
+        "bardescriptorfilenodemanager.cpp",
+        "bardescriptorfilenodemanager.h",
         "bardescriptormagicmatcher.cpp",
         "bardescriptormagicmatcher.h",
         "bardescriptorpermissionsmodel.cpp",
@@ -134,6 +137,8 @@ QtcPlugin {
         "blackberryqtversion.h",
         "blackberryqtversionfactory.cpp",
         "blackberryqtversionfactory.h",
+        "blackberrypotentialkit.cpp",
+        "blackberrypotentialkit.h",
         "blackberryprocessparser.cpp",
         "blackberryprocessparser.h",
         "blackberryrunconfiguration.cpp",
@@ -205,10 +210,14 @@ QtcPlugin {
         "qnxattachdebugsupport.h",
         "qnxattachdebugdialog.cpp",
         "qnxattachdebugdialog.h",
+        "qnxbaseconfiguration.cpp",
+        "qnxbaseconfiguration.h",
         "qnxbaseqtconfigwidget.cpp",
         "qnxbaseqtconfigwidget.h",
         "qnxbaseqtconfigwidget.ui",
         "qnxconstants.h",
+        "qnxconfiguration.cpp",
+        "qnxconfiguration.h",
         "qnxabstractrunsupport.cpp",
         "qnxabstractrunsupport.h",
         "qnxanalyzesupport.cpp",

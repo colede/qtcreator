@@ -157,6 +157,9 @@ public:
         layout->setSpacing(0);
         layout->addWidget(m_label);
 
+        // Limit horizontal width
+        m_label->setSizePolicy(QSizePolicy::Fixed, m_label->sizePolicy().verticalPolicy());
+
         m_label->setForegroundRole(QPalette::ToolTipText);
         m_label->setBackgroundRole(QPalette::ToolTipBase);
     }
@@ -164,6 +167,20 @@ public:
     void setText(const QString &text)
     {
         m_label->setText(text);
+    }
+
+    // Workaround QTCREATORBUG-11653
+    void calculateMaximumWidth()
+    {
+        const QDesktopWidget *desktopWidget = QApplication::desktop();
+        const int desktopWidth = desktopWidget->isVirtualDesktop()
+                ? desktopWidget->width()
+                : desktopWidget->availableGeometry(desktopWidget->primaryScreen()).width();
+        const QMargins widgetMargins = contentsMargins();
+        const QMargins layoutMargins = layout()->contentsMargins();
+        const int margins = widgetMargins.left() + widgetMargins.right()
+                + layoutMargins.left() + layoutMargins.right();
+        m_label->setMaximumWidth(desktopWidth - this->pos().x() - margins);
     }
 
 private:
@@ -296,6 +313,7 @@ void GenericProposalWidgetPrivate::maybeShowInfoTip()
 
     m_infoFrame->move(m_completionListView->infoFramePos());
     m_infoFrame->setText(infoTip);
+    m_infoFrame->calculateMaximumWidth();
     m_infoFrame->adjustSize();
     m_infoFrame->show();
     m_infoFrame->raise();
@@ -531,27 +549,10 @@ void GenericProposalWidget::turnOnAutoWidth()
     updatePositionAndSize();
 }
 
-static bool useCarbonWorkaround()
-{
-#if (QT_VERSION < 0x050000) && defined(Q_OS_DARWIN) && ! defined(QT_MAC_USE_COCOA)
-    return true;
-#else
-    return false;
-#endif
-}
-
 bool GenericProposalWidget::eventFilter(QObject *o, QEvent *e)
 {
     if (e->type() == QEvent::FocusOut) {
         abort();
-        if (useCarbonWorkaround()) {
-            QFocusEvent *fe = static_cast<QFocusEvent *>(e);
-            if (fe->reason() == Qt::OtherFocusReason) {
-                // Qt/carbon workaround
-                // focus out is received before the key press event.
-                activateCurrentProposalItem();
-            }
-        }
         if (d->m_infoFrame)
             d->m_infoFrame->close();
         return true;
@@ -591,10 +592,9 @@ bool GenericProposalWidget::eventFilter(QObject *o, QEvent *e)
 
         case Qt::Key_Tab:
         case Qt::Key_Return:
-            if (!useCarbonWorkaround()) {
-                abort();
-                activateCurrentProposalItem();
-            }
+        case Qt::Key_Enter:
+            abort();
+            activateCurrentProposalItem();
             return true;
 
         case Qt::Key_Up:
@@ -613,7 +613,6 @@ bool GenericProposalWidget::eventFilter(QObject *o, QEvent *e)
             }
             return false;
 
-        case Qt::Key_Enter:
         case Qt::Key_PageDown:
         case Qt::Key_PageUp:
             return false;

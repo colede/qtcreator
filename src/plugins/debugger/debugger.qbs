@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -199,7 +199,6 @@ QtcPlugin {
             "debugger_empty_14.png",
             "debugger_interrupt.png",
             "debugger_interrupt_32.png",
-            "debugger_interrupt_small.png",
             "debugger_reversemode_16.png",
             "debugger_singleinstructionmode.png",
             "debugger_snapshot_small.png",

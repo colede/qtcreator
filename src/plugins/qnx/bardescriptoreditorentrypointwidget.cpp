@@ -57,6 +57,7 @@ BarDescriptorEditorEntryPointWidget::BarDescriptorEditorEntryPointWidget(QWidget
     m_ui->setupUi(this);
 
     m_ui->iconFilePath->setExpectedKind(Utils::PathChooser::File);
+    m_ui->iconFilePath->setHistoryCompleter(QLatin1String("Qmake.Icon.History"));
     m_ui->iconFilePath->setPromptDialogFilter(tr("Images (*.jpg *.png)"));
 
     m_ui->iconWarningLabel->setVisible(false);
@@ -259,7 +260,7 @@ void BarDescriptorEditorEntryPointWidget::validateImage(const QString &path, QLa
 
     switch (result) {
     case CouldNotLoad:
-        warningMessage->setText(tr("<font color=\"red\">Could not open '%1' for reading.</font>").arg(path));
+        warningMessage->setText(tr("<font color=\"red\">Could not open \"%1\" for reading.</font>").arg(path));
         warningMessage->setVisible(true);
         warningPixmap->setVisible(true);
         break;

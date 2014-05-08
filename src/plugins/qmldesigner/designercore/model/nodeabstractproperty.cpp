@@ -30,7 +30,9 @@
 #include "nodeabstractproperty.h"
 #include "nodeproperty.h"
 #include "invalidmodelnodeexception.h"
+#include "invalidpropertyexception.h"
 #include "invalidreparentingexception.h"
+#include "internalnodeabstractproperty.h"
 #include "internalnode_p.h"
 #include "model.h"
 #include "model_p.h"
@@ -114,6 +116,21 @@ int NodeAbstractProperty::indexOf(const ModelNode &node) const
     return property->indexOf(node.internalNode());
 }
 
+NodeAbstractProperty NodeAbstractProperty::parentProperty() const
+{
+    if (!isValid()) {
+        Q_ASSERT_X(isValid(), Q_FUNC_INFO, "property is invalid");
+        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, name());
+    }
+
+    if (internalNode()->parentProperty().isNull()) {
+        Q_ASSERT_X(internalNode()->parentProperty(), Q_FUNC_INFO, "parentProperty is invalid");
+        throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "parent");
+    }
+
+    return NodeAbstractProperty(internalNode()->parentProperty()->name(), internalNode()->parentProperty()->propertyOwner(), model(), view());
+}
+
 int NodeAbstractProperty::count() const
 {
     Internal::InternalNodeAbstractProperty::Pointer property = internalNode()->nodeAbstractProperty(name());
@@ -123,7 +140,7 @@ int NodeAbstractProperty::count() const
         return property->count();
 }
 
-QList<ModelNode> NodeAbstractProperty::allSubNodes()
+const QList<ModelNode> NodeAbstractProperty::allSubNodes()
 {
     if (!internalNode()
         || !internalNode()->isValid()
@@ -132,7 +149,19 @@ QList<ModelNode> NodeAbstractProperty::allSubNodes()
         return QList<ModelNode>();
 
     Internal::InternalNodeAbstractProperty::Pointer property = internalNode()->nodeAbstractProperty(name());
-    return toModelNodeList(property->allSubNodes(), view());
+    return QmlDesigner::toModelNodeList(property->allSubNodes(), view());
+}
+
+const QList<ModelNode> NodeAbstractProperty::directSubNodes() const
+{
+    if (!internalNode()
+        || !internalNode()->isValid()
+        || !internalNode()->hasProperty(name())
+        || !internalNode()->property(name())->isNodeAbstractProperty())
+        return QList<ModelNode>();
+
+    Internal::InternalNodeAbstractProperty::Pointer property = internalNode()->nodeAbstractProperty(name());
+    return QmlDesigner::toModelNodeList(property->directSubNodes(), view());
 }
 
 /*!

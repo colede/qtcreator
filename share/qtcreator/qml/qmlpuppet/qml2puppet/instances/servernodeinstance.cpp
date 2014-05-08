@@ -41,7 +41,6 @@
 #include "debugoutputcommand.h"
 
 #include "quickitemnodeinstance.h"
-#include "quickwindownodeinstance.h"
 
 #include "nodeinstanceserver.h"
 #include "instancecontainer.h"
@@ -153,7 +152,7 @@ void ServerNodeInstance::setNodeSource(const QString &source)
 
 bool ServerNodeInstance::holdsGraphical() const
 {
-    return m_nodeInstance->isGraphical();
+    return m_nodeInstance->isQuickItem();
 }
 
 void ServerNodeInstance::updateDirtyNodeRecursive()
@@ -198,8 +197,6 @@ Internal::ObjectNodeInstance::Pointer ServerNodeInstance::createInstance(QObject
         instance = Internal::QmlTransitionNodeInstance::create(objectToBeWrapped);
     else if (isSubclassOf(objectToBeWrapped, "QQuickBehavior"))
         instance = Internal::BehaviorNodeInstance::create(objectToBeWrapped);
-    else if (isSubclassOf(objectToBeWrapped, "QQuickWindow"))
-        instance = Internal::QuickWindowNodeInstance::create(objectToBeWrapped);
     else if (isSubclassOf(objectToBeWrapped, "QObject"))
         instance = Internal::ObjectNodeInstance::create(objectToBeWrapped);
     else
@@ -631,6 +628,16 @@ void ServerNodeInstance::doComponentComplete()
 QList<ServerNodeInstance> ServerNodeInstance::childItems() const
 {
     return m_nodeInstance->childItems();
+}
+
+QQuickItem *ServerNodeInstance::rootQuickItem() const
+{
+    return qobject_cast<QQuickItem*>(internalObject());
+}
+
+QList<QQuickItem *> ServerNodeInstance::allItemsRecursive() const
+{
+    return m_nodeInstance->allItemsRecursive();
 }
 
 QString ServerNodeInstance::id() const

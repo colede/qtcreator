@@ -45,12 +45,14 @@
 #include <coreplugin/mimedatabase.h>
 #include <cpptools/cppmodelmanagerinterface.h>
 #include <projectexplorer/buildenvironmentwidget.h>
+#include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildtargetinfo.h>
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/kit.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectmacroexpander.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
 #include <projectexplorer/toolchain.h>
@@ -58,11 +60,13 @@
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/uicodemodelsupport.h>
 #include <qmljstools/qmljsmodelmanager.h>
-
 #include <qmljs/qmljsmodelmanagerinterface.h>
+#include <utils/hostosinfo.h>
 
 #include <qbs.h>
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 
 using namespace Core;
@@ -244,16 +248,14 @@ bool QbsProject::hasParseResult() const
     return qbsProject().isValid();
 }
 
-FileName QbsProject::defaultBuildDirectory() const
+Utils::FileName QbsProject::defaultBuildDirectory(const QString &projectFilePath, const Kit *k,
+                                                  const QString &bcName)
 {
-    return defaultBuildDirectory(m_fileName);
-}
-
-Utils::FileName QbsProject::defaultBuildDirectory(const QString &path)
-{
-    QFileInfo fi(path);
-    const QString buildDir = QDir(fi.canonicalPath()).absoluteFilePath(QString::fromLatin1("../%1-build").arg(fi.baseName()));
-    return FileName::fromString(QDir::cleanPath(buildDir));
+    const QString projectName = QFileInfo(projectFilePath).completeBaseName();
+    ProjectExplorer::ProjectMacroExpander expander(projectFilePath, projectName, k, bcName);
+    QString projectDir = projectDirectory(Utils::FileName::fromString(projectFilePath)).toString();
+    QString buildPath = Utils::expandMacros(Core::DocumentManager::buildDirectory(), &expander);
+    return Utils::FileName::fromString(Utils::FileUtils::resolvePath(projectDir, buildPath));
 }
 
 qbs::Project QbsProject::qbsProject() const
@@ -294,22 +296,22 @@ void QbsProject::handleQbsParsingDone(bool success)
     delete m_qbsUpdateFutureInterface;
     m_qbsUpdateFutureInterface = 0;
 
-    if (!project.isValid())
-        return;
+    if (project.isValid()) {
+        // Do not throw away data when parsing errors were introduced. That frightens users:-)
+        m_rootProjectNode->update(project);
 
-    m_rootProjectNode->update(project);
+        updateDocuments(project.isValid() ? project.buildSystemFiles() : QSet<QString>() << m_fileName);
 
-    updateDocuments(project.isValid() ? project.buildSystemFiles() : QSet<QString>() << m_fileName);
+        updateCppCodeModel(m_rootProjectNode->qbsProjectData());
+        updateQmlJsCodeModel(m_rootProjectNode->qbsProjectData());
+        updateApplicationTargets(m_rootProjectNode->qbsProjectData());
+        updateDeploymentInfo(m_rootProjectNode->qbsProject());
 
-    updateCppCodeModel(m_rootProjectNode->qbsProjectData());
-    updateQmlJsCodeModel(m_rootProjectNode->qbsProjectData());
-    updateApplicationTargets(m_rootProjectNode->qbsProjectData());
-    updateDeploymentInfo(m_rootProjectNode->qbsProject());
+        foreach (Target *t, targets())
+            t->updateDefaultRunConfigurations();
 
-    foreach (Target *t, targets())
-        t->updateDefaultRunConfigurations();
-
-    emit fileListChanged();
+        emit fileListChanged();
+    }
     emit projectParsingDone(success);
 }
 
@@ -359,6 +361,12 @@ void QbsProject::buildConfigurationChanged(BuildConfiguration *bc)
 
 void QbsProject::startParsing()
 {
+    // Qbs does update the build graph during the build. So we cannot
+    // start to parse while a build is running or we will lose information.
+    // Just return since the qbsbuildstep will trigger a reparse after the build.
+    if (ProjectExplorer::BuildManager::isBuilding(this))
+        return;
+
     parseCurrentBuildConfiguration(false);
 }
 
@@ -462,9 +470,8 @@ void QbsProject::parse(const QVariantMap &config, const Environment &env, const 
     params.setIgnoreDifferentProjectFilePath(false);
     params.setEnvironment(env.toProcessEnvironment());
     const qbs::Preferences prefs(QbsManager::settings(), profileName);
-    const QString qbsDir = qbsDirectory();
-    params.setSearchPaths(prefs.searchPaths(qbsDir));
-    params.setPluginPaths(prefs.pluginPaths(qbsDir));
+    params.setSearchPaths(prefs.searchPaths(resourcesBaseDirectory()));
+    params.setPluginPaths(prefs.pluginPaths(pluginsBaseDirectory()));
 
     // Do the parsing:
     prepareForParsing();
@@ -506,7 +513,7 @@ void QbsProject::prepareForParsing()
     m_qbsUpdateFutureInterface = new QFutureInterface<void>();
     m_qbsUpdateFutureInterface->setProgressRange(0, 0);
     ProgressManager::addTask(m_qbsUpdateFutureInterface->future(),
-        tr("Evaluating"), "Qbs.QbsEvaluate");
+        tr("Reading Project \"%1\"").arg(displayName()), "Qbs.QbsEvaluate");
     m_qbsUpdateFutureInterface->reportStarted();
 }
 
@@ -705,12 +712,25 @@ void QbsProject::updateDeploymentInfo(const qbs::Project &project)
     activeTarget()->setDeploymentData(deploymentData);
 }
 
-QString QbsProject::qbsDirectory() const
+QString QbsProject::resourcesBaseDirectory() const
 {
     const QString qbsInstallDir = QLatin1String(QBS_INSTALL_DIR);
     if (!qbsInstallDir.isEmpty())
         return qbsInstallDir;
     return ICore::resourcePath() + QLatin1String("/qbs");
+}
+
+QString QbsProject::pluginsBaseDirectory() const
+{
+    const QString qbsInstallDir = QLatin1String(QBS_INSTALL_DIR);
+    if (!qbsInstallDir.isEmpty())
+        return qbsInstallDir + QLatin1String("/lib/");
+    if (Utils::HostOsInfo::isMacHost())
+        return QDir::cleanPath(QCoreApplication::applicationDirPath()
+                               + QLatin1String("/../PlugIns"));
+    else
+        return QDir::cleanPath(QCoreApplication::applicationDirPath()
+                               + QLatin1String("/../" IDE_LIBRARY_BASENAME "/qtcreator"));
 }
 
 } // namespace Internal

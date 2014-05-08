@@ -230,10 +230,11 @@ struct ProjectExplorerPluginPrivate {
     Internal::AppOutputPane *m_outputPane;
 
     QList<QPair<QString, QString> > m_recentProjects; // pair of filename, displayname
-    static const int m_maxRecentProjects = 7;
+    static const int m_maxRecentProjects = 25;
 
     QString m_lastOpenDirectory;
-    RunConfiguration *m_delayedRunConfiguration;
+    QPointer<RunConfiguration> m_delayedRunConfiguration;
+    bool m_shouldHaveRunConfiguration;
     RunMode m_runMode;
     QString m_projectFilterString;
     Internal::MiniProjectTargetSelector * m_targetSelector;
@@ -256,7 +257,7 @@ struct ProjectExplorerPluginPrivate {
 ProjectExplorerPluginPrivate::ProjectExplorerPluginPrivate() :
     m_currentProject(0),
     m_currentNode(0),
-    m_delayedRunConfiguration(0),
+    m_shouldHaveRunConfiguration(false),
     m_runMode(NoRunMode),
     m_projectsMode(0),
     m_kitManager(0),
@@ -328,6 +329,8 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     if (!parseArguments(arguments, error))
         return false;
     addObject(this);
+
+    addAutoReleasedObject(new DeviceManager);
 
     // Add ToolChainFactories:
 #ifdef Q_OS_WIN
@@ -998,7 +1001,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     connect(buildManager, SIGNAL(buildStateChanged(ProjectExplorer::Project*)),
             this, SLOT(buildStateChanged(ProjectExplorer::Project*)));
     connect(buildManager, SIGNAL(buildQueueFinished(bool)),
-            this, SLOT(buildQueueFinished(bool)));
+            this, SLOT(buildQueueFinished(bool)), Qt::QueuedConnection);
 
     updateActions();
 
@@ -1061,7 +1064,7 @@ void ProjectExplorerPlugin::loadAction()
     openProject(filename, &errorMessage);
 
     if (!errorMessage.isEmpty())
-        QMessageBox::critical(ICore::mainWindow(), tr("Failed to open project"), errorMessage);
+        QMessageBox::critical(ICore::mainWindow(), tr("Failed to open project."), errorMessage);
     updateActions();
 }
 
@@ -1378,13 +1381,13 @@ QList<Project *> ProjectExplorerPlugin::openProjects(const QStringList &fileName
             filePath = fi.canonicalFilePath();
         bool found = false;
         foreach (Project *pi, SessionManager::projects()) {
-            if (filePath == pi->projectFilePath()) {
+            if (filePath == pi->projectFilePath().toString()) {
                 found = true;
                 break;
             }
         }
         if (found) {
-            appendError(errorString, tr("Failed opening project '%1': Project already open")
+            appendError(errorString, tr("Failed opening project \"%1\": Project already open.")
                         .arg(QDir::toNativeSeparators(fileName)));
             SessionManager::reportProjectLoadingProgress();
             continue;
@@ -1405,7 +1408,7 @@ QList<Project *> ProjectExplorerPlugin::openProjects(const QStringList &fileName
                                 setCurrentNode(pro->rootProjectNode());
                             openedPro += pro;
                         } else {
-                            appendError(errorString, tr("Failed opening project '%1': Settings could not be restored")
+                            appendError(errorString, tr("Failed opening project \"%1\": Settings could not be restored.")
                                         .arg(QDir::toNativeSeparators(fileName)));
                             delete pro;
                         }
@@ -1416,12 +1419,12 @@ QList<Project *> ProjectExplorerPlugin::openProjects(const QStringList &fileName
                 }
             }
             if (!foundProjectManager) {
-                appendError(errorString, tr("Failed opening project '%1': No plugin can open project type '%2'.")
+                appendError(errorString, tr("Failed opening project \"%1\": No plugin can open project type \"%2\".")
                             .arg(QDir::toNativeSeparators(fileName))
                             .arg((mt.type())));
             }
         } else {
-            appendError(errorString, tr("Failed opening project '%1': Unknown project type.")
+            appendError(errorString, tr("Failed opening project \"%1\": Unknown project type.")
                         .arg(QDir::toNativeSeparators(fileName)));
         }
         SessionManager::reportProjectLoadingProgress();
@@ -1496,7 +1499,8 @@ void ProjectExplorerPlugin::updateWelcomePage()
 
 void ProjectExplorerPlugin::currentModeChanged(IMode *mode, IMode *oldMode)
 {
-    Q_UNUSED(oldMode);
+    if (oldMode && oldMode->id() == ProjectExplorer::Constants::MODE_SESSION)
+        ICore::saveSettings();
     if (mode && mode->id() == Core::Constants::MODE_WELCOME)
         updateWelcomePage();
 }
@@ -1529,7 +1533,7 @@ void ProjectExplorerPlugin::determineSessionToRestoreAtStartup()
 }
 
 // Return a list of glob patterns for project files ("*.pro", etc), use first, main pattern only.
-static inline QStringList projectFileGlobs()
+QStringList ProjectExplorerPlugin::projectFileGlobs()
 {
     QStringList result;
     foreach (const IProjectManager *ipm, ExtensionSystem::PluginManager::getObjects<IProjectManager>()) {
@@ -1568,7 +1572,7 @@ void ProjectExplorerPlugin::restoreSession()
     //   "filename+45"   and "filename:23".
     if (!arguments.isEmpty()) {
         const QStringList sessions = SessionManager::sessions();
-        QStringList projectGlobs = projectFileGlobs();
+        QStringList projectGlobs = ProjectExplorerPlugin::projectFileGlobs();
         for (int a = 0; a < arguments.size(); ) {
             const QString &arg = arguments.at(a);
             const QFileInfo fi(arg);
@@ -1747,22 +1751,29 @@ void ProjectExplorerPlugin::buildQueueFinished(bool success)
     updateActions();
 
     bool ignoreErrors = true;
-    if (d->m_delayedRunConfiguration && success && BuildManager::getErrorTaskCount() > 0) {
-        ignoreErrors = QMessageBox::question(ICore::mainWindow(),
-                                             tr("Ignore all errors?"),
+    if (!d->m_delayedRunConfiguration.isNull() && success && BuildManager::getErrorTaskCount() > 0) {
+        ignoreErrors = QMessageBox::question(ICore::dialogParent(),
+                                             tr("Ignore All Errors?"),
                                              tr("Found some build errors in current task.\n"
                                                 "Do you want to ignore them?"),
                                              QMessageBox::Yes | QMessageBox::No,
                                              QMessageBox::No) == QMessageBox::Yes;
     }
+    if (d->m_delayedRunConfiguration.isNull() && d->m_shouldHaveRunConfiguration) {
+        QMessageBox::warning(ICore::dialogParent(),
+                             tr("Run Configuration Removed"),
+                             tr("The configuration that was supposed to run is no longer "
+                                "available."), QMessageBox::Ok);
+    }
 
-    if (success && ignoreErrors && d->m_delayedRunConfiguration) {
-        executeRunConfiguration(d->m_delayedRunConfiguration, d->m_runMode);
+    if (success && ignoreErrors && !d->m_delayedRunConfiguration.isNull()) {
+        executeRunConfiguration(d->m_delayedRunConfiguration.data(), d->m_runMode);
     } else {
         if (BuildManager::tasksAvailable())
             BuildManager::showTaskWindow();
     }
     d->m_delayedRunConfiguration = 0;
+    d->m_shouldHaveRunConfiguration = false;
     d->m_runMode = NoRunMode;
 }
 
@@ -1780,7 +1791,7 @@ void ProjectExplorerPlugin::updateExternalFileWarning()
     if (!d->m_currentProject || !infoBar->canInfoBeAdded(externalFileId))
         return;
     Utils::FileName fileName = Utils::FileName::fromString(document->filePath());
-    Utils::FileName projectDir = Utils::FileName::fromString(d->m_currentProject->projectDirectory());
+    Utils::FileName projectDir = d->m_currentProject->projectDirectory();
     if (projectDir.isEmpty() || fileName.isChildOf(projectDir))
         return;
     // External file. Test if it under the same VCS
@@ -1983,9 +1994,10 @@ bool ProjectExplorerPlugin::saveModifiedFiles()
                                                         tr("Always save files before build"), &alwaysSave)) {
                 if (cancelled)
                     return false;
-                if (alwaysSave)
-                    d->m_projectExplorerSettings.saveBeforeBuild = true;
             }
+
+            if (alwaysSave)
+                d->m_projectExplorerSettings.saveBeforeBuild = true;
         }
     }
     return true;
@@ -2224,7 +2236,7 @@ QPair<bool, QString> ProjectExplorerPlugin::buildSettingsEnabled(Project *pro)
                     && project->activeTarget()->activeBuildConfiguration()
                     && !project->activeTarget()->activeBuildConfiguration()->isEnabled()) {
                 result.first = false;
-                result.second += tr("Building '%1' is disabled: %2<br>")
+                result.second += tr("Building \"%1\" is disabled: %2<br>")
                         .arg(project->displayName(),
                              project->activeTarget()->activeBuildConfiguration()->disabledReason());
             }
@@ -2253,7 +2265,7 @@ QPair<bool, QString> ProjectExplorerPlugin::buildSettingsEnabledForSession()
                     && project->activeTarget()->activeBuildConfiguration()
                     && !project->activeTarget()->activeBuildConfiguration()->isEnabled()) {
                 result.first = false;
-                result.second += tr("Building '%1' is disabled: %2")
+                result.second += tr("Building \"%1\" is disabled: %2")
                         .arg(project->displayName(),
                              project->activeTarget()->activeBuildConfiguration()->disabledReason());
                 result.second += QLatin1Char('\n');
@@ -2326,6 +2338,7 @@ void ProjectExplorerPlugin::runRunConfiguration(RunConfiguration *rc,
         // delay running till after our queued steps were processed
         d->m_runMode = runMode;
         d->m_delayedRunConfiguration = rc;
+        d->m_shouldHaveRunConfiguration = true;
     } else {
         executeRunConfiguration(rc, runMode);
     }
@@ -2357,7 +2370,7 @@ void ProjectExplorerPlugin::projectRemoved(ProjectExplorer::Project * pro)
 
 void ProjectExplorerPlugin::projectDisplayNameChanged(Project *pro)
 {
-    addToRecentProjects(pro->projectFilePath(), pro->displayName());
+    addToRecentProjects(pro->projectFilePath().toString(), pro->displayName());
     updateActions();
 }
 
@@ -2519,10 +2532,10 @@ QString ProjectExplorerPlugin::cannotRunReason(Project *project, RunMode runMode
         return tr("The project %1 is not configured.").arg(project->displayName());
 
     if (!project->activeTarget())
-        return tr("The project '%1' has no active kit.").arg(project->displayName());
+        return tr("The project \"%1\" has no active kit.").arg(project->displayName());
 
     if (!project->activeTarget()->activeRunConfiguration())
-        return tr("The kit '%1' for the project '%2' has no active run configuration.")
+        return tr("The kit \"%1\" for the project \"%2\" has no active run configuration.")
                 .arg(project->activeTarget()->displayName(), project->displayName());
 
 
@@ -2541,7 +2554,7 @@ QString ProjectExplorerPlugin::cannotRunReason(Project *project, RunMode runMode
 
     // shouldn't actually be shown to the user...
     if (!findRunControlFactory(activeRC, runMode))
-        return tr("Cannot run '%1'.").arg(activeRC->displayName());
+        return tr("Cannot run \"%1\".").arg(activeRC->displayName());
 
     if (BuildManager::isBuilding())
         return tr("A build is still in progress.");
@@ -2644,7 +2657,7 @@ void ProjectExplorerPlugin::openRecentProject()
         QString errorMessage;
         openProject(fileName, &errorMessage);
         if (!errorMessage.isEmpty())
-            QMessageBox::critical(ICore::mainWindow(), tr("Failed to open project"), errorMessage);
+            QMessageBox::critical(ICore::mainWindow(), tr("Failed to open project."), errorMessage);
     }
 }
 
@@ -2677,6 +2690,8 @@ void ProjectExplorerPlugin::updateContextMenuActions()
 
     d->m_addExistingFilesAction->setVisible(true);
     d->m_addExistingDirectoryAction->setVisible(true);
+    d->m_addNewFileAction->setVisible(true);
+    d->m_addNewSubprojectAction->setVisible(true);
     d->m_removeFileAction->setVisible(true);
     d->m_deleteFileAction->setVisible(true);
     d->m_runActionContextMenu->setVisible(false);
@@ -2696,7 +2711,7 @@ void ProjectExplorerPlugin::updateContextMenuActions()
             if (pn == d->m_currentProject->rootProjectNode()) {
                 d->m_runActionContextMenu->setVisible(true);
             } else {
-                QList<RunConfiguration *> runConfigs = pn->runConfigurationsFor(pn);
+                QList<RunConfiguration *> runConfigs = pn->runConfigurations();
                 if (runConfigs.count() == 1) {
                     d->m_runActionContextMenu->setVisible(true);
                     d->m_runActionContextMenu->setData(QVariant::fromValue(runConfigs.first()));
@@ -2741,6 +2756,18 @@ void ProjectExplorerPlugin::updateContextMenuActions()
             d->m_showInGraphicalShell->setVisible(false);
             d->m_searchOnFileSystem->setVisible(false);
         }
+
+        if (actions.contains(ProjectExplorer::HideFileActions)) {
+            d->m_deleteFileAction->setVisible(false);
+            d->m_removeFileAction->setVisible(false);
+        }
+
+        if (actions.contains(ProjectExplorer::HideFolderActions)) {
+            d->m_addNewFileAction->setVisible(false);
+            d->m_addNewSubprojectAction->setVisible(false);
+            d->m_addExistingFilesAction->setVisible(false);
+            d->m_addExistingDirectoryAction->setVisible(false);
+        }
     }
 }
 
@@ -2761,6 +2788,12 @@ QString pathOrDirectoryFor(Node *node, bool dir)
                 list << f->path() + QLatin1Char('/');
             location = Utils::commonPath(list);
         }
+
+        QFileInfo fi(location);
+        while ((!fi.exists() || !fi.isDir())
+               && !fi.isRoot())
+            fi.setFile(fi.absolutePath());
+        location = fi.absoluteFilePath();
     } else {
         QFileInfo fi(path);
         // remove any /suffixes, which e.g. ResourceNode uses
@@ -2793,7 +2826,7 @@ void ProjectExplorerPlugin::addNewFile()
     QString location = directoryFor(d->m_currentNode);
 
     QVariantMap map;
-    map.insert(QLatin1String(Constants::PREFERED_PROJECT_NODE), QVariant::fromValue(d->m_currentNode));
+    map.insert(QLatin1String(Constants::PREFERRED_PROJECT_NODE), QVariant::fromValue(d->m_currentNode));
     if (d->m_currentProject) {
         QList<Id> profileIds;
         foreach (Target *target, d->m_currentProject->targets())
@@ -2815,7 +2848,7 @@ void ProjectExplorerPlugin::addNewSubproject()
             && d->m_currentNode->supportedActions(
                 d->m_currentNode).contains(ProjectExplorer::AddSubProject)) {
         QVariantMap map;
-        map.insert(QLatin1String(Constants::PREFERED_PROJECT_NODE), QVariant::fromValue(d->m_currentNode));
+        map.insert(QLatin1String(Constants::PREFERRED_PROJECT_NODE), QVariant::fromValue(d->m_currentNode));
         if (d->m_currentProject) {
             QList<Id> profileIds;
             foreach (Target *target, d->m_currentProject->targets())
@@ -2938,7 +2971,9 @@ void ProjectExplorerPlugin::removeFile()
             return;
         }
 
+        DocumentManager::expectFileChange(filePath);
         Core::FileUtils::removeFile(filePath, deleteFile);
+        DocumentManager::unexpectFileChange(filePath);
     }
 }
 

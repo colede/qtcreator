@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -29,7 +29,6 @@ QtcPlugin {
         "basevcssubmiteditorfactory.h",
         "checkoutprogresswizardpage.cpp",
         "checkoutprogresswizardpage.h",
-        "checkoutprogresswizardpage.ui",
         "checkoutwizarddialog.cpp",
         "checkoutwizarddialog.h",
         "cleandialog.cpp",

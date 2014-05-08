@@ -98,6 +98,24 @@
 #endif // USE_UNINITIALIZED_AUTOBREAK
 #endif
 
+#ifdef HAS_BOOST
+#ifndef ANDROID
+#define USE_BOOST 1
+#endif
+#endif
+
+#ifdef HAS_PRIVATE
+#define USE_PRIVATE 1
+#endif
+
+#ifdef HAS_EIGEN2
+#define USE_EIGEN 1
+#endif
+
+#ifdef HAS_EIGEN3
+#define USE_EIGEN 1
+#endif
+
 #ifdef QT_SCRIPT_LIB
 #define USE_SCRIPTLIB 1
 #else
@@ -217,7 +235,7 @@ void dummyStatement(...) {}
 #endif
 
 #if USE_EIGEN
-#include <eigen2/Eigen/Core>
+#include <Eigen/Core>
 #endif
 
 #if USE_PRIVATE
@@ -225,9 +243,11 @@ void dummyStatement(...) {}
 #endif
 
 #if defined(__GNUC__) && !defined(__llvm__) && !defined(Q_OS_MAC)
+#  ifndef ANDROID
 #    define USE_GCC_EXT 1
 #    undef __DEPRECATED
 #    include <ext/hash_set>
+#  endif
 #endif
 
 #ifdef Q_OS_WIN
@@ -1765,7 +1785,9 @@ namespace qobject {
         QObject child(&parent);
         child.setObjectName("A Child");
         QObject::connect(&child, SIGNAL(destroyed()), &parent, SLOT(deleteLater()));
+        QObject::connect(&child, SIGNAL(destroyed()), &child, SLOT(deleteLater()));
         QObject::disconnect(&child, SIGNAL(destroyed()), &parent, SLOT(deleteLater()));
+        QObject::disconnect(&child, SIGNAL(destroyed()), &child, SLOT(deleteLater()));
         child.setObjectName("A renamed Child");
         BREAK_HERE;
         // Check child "A renamed Child" QObject.
@@ -1797,6 +1819,7 @@ namespace qobject {
             Q_PROPERTY(QString myProp1 READ myProp1 WRITE setMyProp1)
             QString myProp1() const { return m_myProp1; }
             Q_SLOT void setMyProp1(const QString&mt) { m_myProp1 = mt; }
+            Q_INVOKABLE void foo() {}
 
             Q_PROPERTY(QString myProp2 READ myProp2 WRITE setMyProp2)
             QString myProp2() const { return m_myProp2; }
@@ -1807,6 +1830,9 @@ namespace qobject {
 
             Q_PROPERTY(long myProp4 READ myProp4)
             long myProp4() const { return 44; }
+
+            Q_SIGNAL void sigFoo();
+            Q_SIGNAL void sigBar(int);
 
         public:
             Ui *m_ui;
@@ -4269,8 +4295,9 @@ namespace qthread {
 Q_DECLARE_METATYPE(QHostAddress)
 Q_DECLARE_METATYPE(QList<int>)
 Q_DECLARE_METATYPE(QStringList)
-#define COMMA ,
-Q_DECLARE_METATYPE(QMap<uint COMMA QStringList>)
+
+typedef QMap<uint, QStringList> QMapUIntQStringList;
+Q_DECLARE_METATYPE(QMapUIntQStringList)
 
 namespace qvariant {
 
@@ -4959,12 +4986,12 @@ namespace basic {
     {
         quint64 u64 = ULLONG_MAX;
         qint64 s64 = LLONG_MAX;
-        quint32 u32 = ULONG_MAX;
-        qint32 s32 = LONG_MAX;
+        quint32 u32 = UINT_MAX;
+        qint32 s32 = INT_MAX;
         quint64 u64s = 0;
         qint64 s64s = LLONG_MIN;
         quint32 u32s = 0;
-        qint32 s32s = LONG_MIN;
+        qint32 s32s = INT_MIN;
 
         BREAK_HERE;
         // Check u64 18446744073709551615 quint64.
@@ -5908,6 +5935,9 @@ namespace sse {
         __m128 sseA, sseB;
         sseA = _mm_loadu_ps(a);
         sseB = _mm_loadu_ps(b);
+
+        __m128i sseAi;
+        sseAi = _mm_set_epi32(1, 3, 5, 7);
         BREAK_HERE;
         // Expand a b.
         // CheckType sseA __m128.

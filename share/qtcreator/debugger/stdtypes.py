@@ -35,10 +35,8 @@ def qform__std__array():
 def qdump__std__array(d, value):
     size = d.numericTemplateArgument(value.type, 1)
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
-        innerType = d.templateArgument(value.type, 0)
-        d.putPlotData(innerType, d.addressOf(value), size)
+        d.putPlotData(d.addressOf(value), size, d.templateArgument(value.type, 0))
 
 
 def qform__std____1__array():
@@ -80,7 +78,6 @@ def qdump__std__deque(d, value):
 
     d.check(0 <= size and size <= 1000 * 1000 * 1000)
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         with Children(d, size, maxNumChild=2000, childType=innerType):
             pcur = start["_M_cur"]
@@ -117,7 +114,6 @@ def qdump__std__deque__QNX(d, value):
 
     d.check(0 <= mapsize and mapsize <= 1000 * 1000 * 1000)
     d.putItemCount(mysize)
-    d.putNumChild(mysize)
     if d.isExpanded():
         with Children(d, mysize, maxNumChild=2000, childType=innerType):
             map = value['_Map']
@@ -148,7 +144,6 @@ def qdump__std__list(d, value):
         pp = d.extractPointer(pp)
 
     d.putItemCount(size, 1000)
-    d.putNumChild(size)
 
     if d.isExpanded():
         p = node["_M_next"]
@@ -164,7 +159,6 @@ def qdump__std__list__QNX(d, value):
     size = value["_Mysize"]
 
     d.putItemCount(size, 1000)
-    d.putNumChild(size)
 
     if d.isExpanded():
         p = node["_Next"]
@@ -189,7 +183,6 @@ def qdump__std__map(d, value):
     size = int(impl["_M_node_count"])
     d.check(0 <= size and size <= 100*1000*1000)
     d.putItemCount(size)
-    d.putNumChild(size)
 
     if d.isExpanded():
         pairType = d.templateArgument(d.templateArgument(value.type, 3), 0)
@@ -216,7 +209,6 @@ def qdump__std__map__QNX(d, value):
     size = value['_Mysize']
     d.check(0 <= size and size <= 100*1000*1000)
     d.putItemCount(size)
-    d.putNumChild(size)
 
     if d.isExpanded():
         keyType = d.templateArgument(value.type, 0)
@@ -339,7 +331,6 @@ def qdump__std__set(d, value):
     size = int(impl["_M_node_count"])
     d.check(0 <= size and size <= 100*1000*1000)
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         valueType = d.templateArgument(value.type, 0)
         node = impl["_M_header"]["_M_left"]
@@ -362,7 +353,6 @@ def qdump__std__set__QNX(d, value):
     size = value['_Mysize']
     d.check(0 <= size and size <= 100*1000*1000)
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         valueType = d.templateArgument(value.type, 0)
         head = value['_Myhead']
@@ -589,7 +579,6 @@ def qdump__std__unordered_map(d, value):
                 d.putNumChild(0)
                 return
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         p = d.pointerValue(start)
         if d.isMapCompact(keyType, valueType):
@@ -628,7 +617,6 @@ def qdump__std__unordered_set(d, value):
                 start = value["_M_buckets"].dereference()
                 offset = d.ptrSize()
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         p = d.pointerValue(start)
         valueType = d.templateArgument(value.type, 0)
@@ -715,7 +703,6 @@ def qdump__std__vector(d, value):
     d.checkPointer(alloc)
 
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         if isBool:
             with Children(d, size, maxNumChild=10000, childType=type):
@@ -724,10 +711,10 @@ def qdump__std__vector(d, value):
                     q = base + int(i / 8)
                     d.putBoolItem(str(i), (int(d.extractPointer(q)) >> (i % 8)) & 1)
         else:
-            d.putPlotData(type, start, size)
+            d.putPlotData(start, size, type)
 
 def qdump__std__vector__QNX(d, value):
-    type = d.templateArgument(value.type, 0)
+    innerType = d.templateArgument(value.type, 0)
     isBool = str(type) == 'bool'
     if isBool:
         impl = value['_Myvec']
@@ -750,15 +737,14 @@ def qdump__std__vector__QNX(d, value):
     d.checkPointer(end)
 
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
         if isBool:
-            with Children(d, size, maxNumChild=10000, childType=type):
+            with Children(d, size, maxNumChild=10000, childType=innerType):
                 for i in d.childRange():
                     q = start + int(i / storagesize)
                     d.putBoolItem(str(i), (q.dereference() >> (i % storagesize)) & 1)
         else:
-            d.putArrayData(type, start, size)
+            d.putArrayData(start, size, innerType)
 
 def qdump__std____1__vector(d, value):
     innerType = d.templateArgument(value.type, 0)
@@ -773,9 +759,8 @@ def qdump__std____1__vector(d, value):
         size = (end - begin) / innerType.sizeof
 
     d.putItemCount(size)
-    d.putNumChild(size)
     if d.isExpanded():
-        d.putPlotData(innerType, begin, size)
+        d.putPlotData(begin, size, innerType)
 
 
 def qform__std____debug__vector():
@@ -820,7 +805,6 @@ def qdump____gnu_cxx__hash_set(d, value):
     size = int(ht["_M_num_elements"])
     d.check(0 <= size and size <= 1000 * 1000 * 1000)
     d.putItemCount(size)
-    d.putNumChild(size)
     type = d.templateArgument(value.type, 0)
     d.putType("__gnu__cxx::hash_set<%s>" % type)
     if d.isExpanded():

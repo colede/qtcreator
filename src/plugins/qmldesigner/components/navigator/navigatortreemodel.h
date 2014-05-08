@@ -35,16 +35,13 @@
 
 #include <QStandardItem>
 #include <QStandardItemModel>
+#include <QPointer>
 
 namespace QmlDesigner {
 
 class Model;
 class AbstractView;
 class ModelNode;
-
-class NavigatorTreeModel : public QStandardItemModel
-{
-    Q_OBJECT
 
 #ifdef _LOCK_ITEMS_
     struct ItemRow {
@@ -79,9 +76,16 @@ class NavigatorTreeModel : public QStandardItemModel
     };
 #endif
 
-    static const int NavigatorRole;
+class NavigatorTreeModel : public QStandardItemModel
+{
+    Q_OBJECT
 
 public:
+    enum {
+        InternalIdRole = Qt::UserRole
+    };
+
+
     NavigatorTreeModel(QObject *parent = 0);
     ~NavigatorTreeModel();
 
@@ -100,9 +104,9 @@ public:
 
     QModelIndex indexForNode(const ModelNode &node) const;
     ModelNode nodeForIndex(const QModelIndex &index) const;
+    bool hasNodeForIndex(const QModelIndex &index) const;
 
     bool isInTree(const ModelNode &node) const;
-    void propagateInvisible(const ModelNode &node, const bool &invisible);
     bool isNodeInvisible(const QModelIndex &index) const;
     bool isNodeInvisible(const ModelNode &node) const;
 
@@ -115,36 +119,29 @@ public:
     void setVisible(const QModelIndex &index, bool visible);
 
     void openContextMenu(const QPoint &p);
+
+    ItemRow itemRowForNode(const ModelNode &node);
+    bool blockItemChangedSignal(bool block);
+
 private slots:
     void handleChangedItem(QStandardItem *item);
 
 private:
-    bool containsNodeHash(uint hash) const;
-    ModelNode nodeForHash(uint hash) const;
-
-    bool containsNode(const ModelNode &node) const;
-    ItemRow itemRowForNode(const ModelNode &node);
-
     ItemRow createItemRow(const ModelNode &node);
     void updateItemRow(const ModelNode &node, ItemRow row);
+    void handleChangedIdItem(QStandardItem *idItem, ModelNode &modelNode);
+    void handleChangedVisibilityItem(QStandardItem *visibilityItem, ModelNode &modelNode);
 
-    void moveNodesInteractive(NodeAbstractProperty parentProperty, const QList<ModelNode> &modelNodes, int targetIndex);
-
-    QList<ModelNode> modelNodeChildren(const ModelNode &parentNode);
-
-    TypeName qmlTypeInQtContainer(const TypeName &qtContainerType) const;
-    PropertyNameList visibleProperties(const ModelNode &node) const;
-
-    bool blockItemChangedSignal(bool block);
+    void moveNodesInteractive(NodeAbstractProperty &parentProperty, const QList<ModelNode> &modelNodes, int targetIndex);
+    void handleInternalDrop(const QMimeData *mimeData, int rowNumber, const QModelIndex &dropModelIndex);
+    void handleItemLibraryItemDrop(const QMimeData *mimeData, int rowNumber, const QModelIndex &dropModelIndex);
+    void handleItemLibraryImageDrop(const QMimeData *mimeData, int rowNumber, const QModelIndex &dropModelIndex);
 
 private:
     QHash<ModelNode, ItemRow> m_nodeItemHash;
-    QHash<uint, ModelNode> m_nodeHash;
-    QWeakPointer<AbstractView> m_view;
+    QPointer<AbstractView> m_view;
 
     bool m_blockItemChangedSignal;
-
-    QStringList m_hiddenProperties;
 };
 
 } // namespace QmlDesigner

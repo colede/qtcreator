@@ -31,8 +31,11 @@
 #include "androidmanager.h"
 #include "ui_androiddevicedialog.h"
 
+#include <QMessageBox>
 #include <QPainter>
 #include <QStyledItemDelegate>
+#include <QToolTip>
+#include <QtConcurrentRun>
 
 using namespace Android;
 using namespace Android::Internal;
@@ -331,8 +334,11 @@ void AndroidDeviceModel::setDevices(const QVector<AndroidDeviceInfo> &devices)
     AndroidDeviceModelNode *incompatibleDevices = 0; // created on demand
     foreach (const AndroidDeviceInfo &device, devices) {
         QString error;
-        if (device.unauthorized) {
+        if (device.state == AndroidDeviceInfo::UnAuthorizedState) {
             error = AndroidDeviceDialog::tr("Unauthorized. Please check the confirmation dialog on your device %1.")
+                    .arg(device.serialNumber);
+        }else if (device.state == AndroidDeviceInfo::OfflineState) {
+            error = AndroidDeviceDialog::tr("Offline. Please check the state of your device %1.")
                     .arg(device.serialNumber);
         } else if (!device.cpuAbi.contains(m_abi)) {
             error = AndroidDeviceDialog::tr("ABI is incompatible, device supports ABIs: %1.")
@@ -366,6 +372,19 @@ QModelIndex AndroidDeviceModel::indexFor(const QString &serial)
 /////////////////
 // AndroidDeviceDialog
 /////////////////
+
+static inline QString msgConnect()
+{
+    return AndroidDeviceDialog::tr("<p>Connect an Android device via USB and activate developer mode on it. "
+                                   "Some devices require the installation of a USB driver.</p>");
+
+}
+
+static inline QString msgAdbListDevices()
+{
+    return AndroidDeviceDialog::tr("<p>The adb tool in the Android SDK lists all connected devices if run via &quot;adb devices&quot;.</p>");
+}
+
 AndroidDeviceDialog::AndroidDeviceDialog(int apiLevel, const QString &abi, QWidget *parent) :
     QDialog(parent),
     m_model(new AndroidDeviceModel(apiLevel, abi)),
@@ -383,11 +402,21 @@ AndroidDeviceDialog::AndroidDeviceDialog(int apiLevel, const QString &abi, QWidg
 
     m_ui->defaultDeviceCheckBox->setText(tr("Always use this device for architecture %1").arg(abi));
 
+    m_ui->noDeviceFoundLabel->setText(QLatin1String("<p align=\"center\"><span style=\" font-size:16pt;\">")
+                                      + tr("No Device Found") + QLatin1String("</span></p><br/>")
+                                      + msgConnect() + QLatin1String("<br/>")
+                                      + msgAdbListDevices());
+    connect(m_ui->missingLabel, SIGNAL(linkActivated(QString)),
+            this, SLOT(showHelp()));
+
     connect(m_ui->refreshDevicesButton, SIGNAL(clicked()),
             this, SLOT(refreshDeviceList()));
 
     connect(m_ui->createAVDButton, SIGNAL(clicked()),
             this, SLOT(createAvd()));
+
+    connect(&m_futureWatcher, SIGNAL(finished()),
+            this, SLOT(avdAdded()));
 
     refreshDeviceList();
 }
@@ -395,6 +424,7 @@ AndroidDeviceDialog::AndroidDeviceDialog(int apiLevel, const QString &abi, QWidg
 AndroidDeviceDialog::~AndroidDeviceDialog()
 {
     delete m_ui;
+    m_futureWatcher.waitForFinished();
 }
 
 AndroidDeviceInfo AndroidDeviceDialog::device()
@@ -442,15 +472,34 @@ void AndroidDeviceDialog::refreshDeviceList()
         newIndex = m_model->indexFor(devices.first().serialNumber);
 
     m_ui->deviceView->setCurrentIndex(newIndex);
+
+    m_ui->stackedWidget->setCurrentIndex(devices.isEmpty() ? 1 : 0);
 }
 
 void AndroidDeviceDialog::createAvd()
 {
-    QString avd = AndroidConfigurations::currentConfig().createAVD(this, m_apiLevel, m_abi);
-    if (avd.isEmpty())
+    m_ui->createAVDButton->setEnabled(false);
+    AndroidConfig::CreateAvdInfo info = AndroidConfigurations::currentConfig().gatherCreateAVDInfo(this, m_apiLevel, m_abi);
+
+    if (info.target.isEmpty()) {
+        m_ui->createAVDButton->setEnabled(true);
         return;
+    }
+
+    m_futureWatcher.setFuture(AndroidConfigurations::currentConfig().createAVD(info));
+}
+
+void AndroidDeviceDialog::avdAdded()
+{
+    m_ui->createAVDButton->setEnabled(true);
+    AndroidConfig::CreateAvdInfo info = m_futureWatcher.result();
+    if (!info.error.isEmpty()) {
+        QMessageBox::critical(this, QApplication::translate("AndroidConfig", "Error Creating AVD"), info.error);
+        return;
+    }
+
     refreshDeviceList();
-    QModelIndex index = m_model->indexFor(avd);
+    QModelIndex index = m_model->indexFor(info.name);
     m_ui->deviceView->setCurrentIndex(index);
 }
 
@@ -466,4 +515,11 @@ void AndroidDeviceDialog::clickedOnView(const QModelIndex &idx)
                 m_ui->deviceView->expand(idx);
         }
     }
+}
+
+void AndroidDeviceDialog::showHelp()
+{
+    QPoint pos = m_ui->missingLabel->pos();
+    pos = m_ui->missingLabel->parentWidget()->mapToGlobal(pos);
+    QToolTip::showText(pos, msgConnect() + msgAdbListDevices(), this);
 }

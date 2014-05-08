@@ -30,14 +30,16 @@
 #define IOSRUNNER_H
 
 #include "iosconfigurations.h"
+#include "iostoolhandler.h"
+#include "iosconstants.h"
+
+#include <projectexplorer/devicesupport/idevice.h>
 
 #include <QObject>
 #include <QTimer>
 #include <QThread>
 #include <QProcess>
 #include <QMutex>
-#include "iostoolhandler.h"
-#include <projectexplorer/devicesupport/idevice.h>
 
 namespace Ios {
 namespace Internal {
@@ -49,7 +51,7 @@ class IosRunner : public QObject
     Q_OBJECT
 
 public:
-    IosRunner(QObject *parent, IosRunConfiguration *m_runConfig, bool m_debuggingMode);
+    IosRunner(QObject *parent, IosRunConfiguration *runConfig, bool cppDebug, bool qmlDebug);
     ~IosRunner();
 
     QString displayName() const;
@@ -58,22 +60,24 @@ public:
     QStringList extraArgs();
     QString deviceId();
     IosToolHandler::RunKind runType();
+    bool cppDebug() const;
+    bool qmlDebug() const;
 public slots:
     void start();
     void stop();
 
 signals:
     void didStartApp(Ios::IosToolHandler::OpStatus status);
-    void gotGdbserverPort(int gdbPort);
-    void gotInferiorPid(Q_PID pid);
+    void gotServerPorts(int gdbPort, int qmlPort);
+    void gotInferiorPid(Q_PID pid, int);
     void appOutput(const QString &output);
     void errorMsg(const QString &msg);
     void finished(bool cleanExit);
 private slots:
     void handleDidStartApp(Ios::IosToolHandler *handler, const QString &bundlePath,
                            const QString &deviceId, Ios::IosToolHandler::OpStatus status);
-    void handleGotGdbserverPort(Ios::IosToolHandler *handler, const QString &bundlePath,
-                                const QString &deviceId, int gdbPort);
+    void handleGotServerPorts(Ios::IosToolHandler *handler, const QString &bundlePath,
+                              const QString &deviceId, int gdbPort, int qmlPort);
     void handleGotInferiorPid(Ios::IosToolHandler *handler, const QString &bundlePath,
                               const QString &deviceId, Q_PID pid);
     void handleAppOutput(Ios::IosToolHandler *handler, const QString &output);
@@ -85,8 +89,11 @@ private:
     QString m_bundleDir;
     QStringList m_arguments;
     ProjectExplorer::IDevice::ConstPtr m_device;
-    bool m_debuggingMode;
+    IosDeviceType::Enum m_deviceType;
+    bool m_cppDebug;
+    bool m_qmlDebug;
     bool m_cleanExit;
+    quint16 m_qmlPort;
     Q_PID m_pid;
 };
 

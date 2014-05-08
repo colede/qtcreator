@@ -92,7 +92,6 @@
 #include <QCloseEvent>
 #include <QMenu>
 #include <QPrinter>
-#include <QShortcut>
 #include <QStatusBar>
 #include <QToolButton>
 #include <QMessageBox>
@@ -100,8 +99,10 @@
 #include <QPushButton>
 #include <QStyleFactory>
 
-using namespace Core;
-using namespace Core::Internal;
+using namespace ExtensionSystem;
+
+namespace Core {
+namespace Internal {
 
 enum { debugMainWindow = 0 };
 
@@ -109,9 +110,7 @@ MainWindow::MainWindow() :
     Utils::AppMainWindow(),
     m_coreImpl(new ICore(this)),
     m_additionalContexts(Constants::C_GLOBAL),
-    m_settings(ExtensionSystem::PluginManager::settings()),
-    m_globalSettings(ExtensionSystem::PluginManager::globalSettings()),
-    m_settingsDatabase(new SettingsDatabase(QFileInfo(m_settings->fileName()).path(),
+    m_settingsDatabase(new SettingsDatabase(QFileInfo(PluginManager::settings()->fileName()).path(),
                                             QLatin1String("QtCreator"),
                                             this)),
     m_printer(0),
@@ -147,10 +146,12 @@ MainWindow::MainWindow() :
     m_zoomAction(0),
     m_toggleSideBarButton(new QToolButton)
 {
+    ActionManager::initialize(); // must be done before registering any actions
+
     (void) new DocumentManager(this);
     OutputPaneManager::create();
 
-    Utils::HistoryCompleter::setSettings(m_settings);
+    Utils::HistoryCompleter::setSettings(PluginManager::settings());
 
     setWindowTitle(tr("Qt Creator"));
     if (!Utils::HostOsInfo::isMacHost())
@@ -268,8 +269,6 @@ MainWindow::~MainWindow()
     m_mimeTypeSettings = 0;
     delete m_systemEditor;
     m_systemEditor = 0;
-    delete m_settings;
-    m_settings = 0;
     delete m_printer;
     m_printer = 0;
     delete m_vcsManager;
@@ -344,15 +343,13 @@ void MainWindow::extensionsInitialized()
     m_vcsManager->extensionsInitialized();
     m_navigationWidget->setFactories(ExtensionSystem::PluginManager::getObjects<INavigationWidgetFactory>());
 
-    // reading the shortcut settings must be done after all shortcuts have been registered
-    m_actionManager->initialize();
-
     readSettings();
     updateContext();
 
     emit m_coreImpl->coreAboutToOpen();
-    show();
-    emit m_coreImpl->coreOpened();
+    // Delay restoreWindowState, since it is overridden by LayoutRequest event
+    QTimer::singleShot(0, this, SLOT(restoreWindowState()));
+    QTimer::singleShot(0, m_coreImpl, SIGNAL(coreOpened()));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -536,10 +533,10 @@ void MainWindow::registerDefaultActions()
 
     // Return to editor shortcut: Note this requires Qt to fix up
     // handling of shortcut overrides in menus, item views, combos....
-    m_focusToEditor = new QShortcut(this);
-    Command *cmd = ActionManager::registerShortcut(m_focusToEditor, Constants::S_RETURNTOEDITOR, globalContext);
+    m_focusToEditor = new QAction(tr("Return to Editor"), this);
+    Command *cmd = ActionManager::registerAction(m_focusToEditor, Constants::S_RETURNTOEDITOR, globalContext);
     cmd->setDefaultKeySequence(QKeySequence(Qt::Key_Escape));
-    connect(m_focusToEditor, SIGNAL(activated()), this, SLOT(setFocusToEditor()));
+    connect(m_focusToEditor, SIGNAL(triggered()), this, SLOT(setFocusToEditor()));
 
     // New File Action
     QIcon icon = QIcon::fromTheme(QLatin1String("document-new"), QIcon(QLatin1String(Constants::ICON_NEWFILE)));
@@ -956,14 +953,6 @@ void MainWindow::openFileWith()
     }
 }
 
-QSettings *MainWindow::settings(QSettings::Scope scope) const
-{
-    if (scope == QSettings::UserScope)
-        return m_settings;
-    else
-        return m_globalSettings;
-}
-
 IContext *MainWindow::contextObject(QWidget *widget)
 {
     return m_contextWidgets.value(widget);
@@ -1069,7 +1058,8 @@ static const char modeSelectorVisibleKey[] = "ModeSelectorVisible";
 
 void MainWindow::readSettings()
 {
-    m_settings->beginGroup(QLatin1String(settingsGroup));
+    QSettings *settings = PluginManager::settings();
+    settings->beginGroup(QLatin1String(settingsGroup));
 
     if (m_overrideColor.isValid()) {
         Utils::StyleHelper::setBaseColor(m_overrideColor);
@@ -1077,41 +1067,39 @@ void MainWindow::readSettings()
         m_overrideColor = Utils::StyleHelper::baseColor();
     } else {
         Utils::StyleHelper::setBaseColor(
-                m_settings->value(QLatin1String(colorKey),
+                settings->value(QLatin1String(colorKey),
                                   QColor(Utils::StyleHelper::DEFAULT_BASE_COLOR)).value<QColor>());
     }
 
-    // Delay restoreWindowState, since it is overridden by LayoutRequest event
-    QTimer::singleShot(0, this, SLOT(restoreWindowState()));
-
-    bool modeSelectorVisible = m_settings->value(QLatin1String(modeSelectorVisibleKey), true).toBool();
+    bool modeSelectorVisible = settings->value(QLatin1String(modeSelectorVisibleKey), true).toBool();
     ModeManager::setModeSelectorVisible(modeSelectorVisible);
     m_toggleModeSelectorAction->setChecked(modeSelectorVisible);
 
-    m_settings->endGroup();
+    settings->endGroup();
 
     m_editorManager->readSettings();
-    m_navigationWidget->restoreSettings(m_settings);
-    m_rightPaneWidget->readSettings(m_settings);
+    m_navigationWidget->restoreSettings(settings);
+    m_rightPaneWidget->readSettings(settings);
 }
 
 void MainWindow::writeSettings()
 {
-    m_settings->beginGroup(QLatin1String(settingsGroup));
+    QSettings *settings = PluginManager::settings();
+    settings->beginGroup(QLatin1String(settingsGroup));
 
     if (!(m_overrideColor.isValid() && Utils::StyleHelper::baseColor() == m_overrideColor))
-        m_settings->setValue(QLatin1String(colorKey), Utils::StyleHelper::requestedBaseColor());
+        settings->setValue(QLatin1String(colorKey), Utils::StyleHelper::requestedBaseColor());
 
-    m_settings->setValue(QLatin1String(windowGeometryKey), saveGeometry());
-    m_settings->setValue(QLatin1String(windowStateKey), saveState());
-    m_settings->setValue(QLatin1String(modeSelectorVisibleKey), ModeManager::isModeSelectorVisible());
+    settings->setValue(QLatin1String(windowGeometryKey), saveGeometry());
+    settings->setValue(QLatin1String(windowStateKey), saveState());
+    settings->setValue(QLatin1String(modeSelectorVisibleKey), ModeManager::isModeSelectorVisible());
 
-    m_settings->endGroup();
+    settings->endGroup();
 
     DocumentManager::saveSettings();
-    m_actionManager->saveSettings(m_settings);
+    m_actionManager->saveSettings(settings);
     m_editorManager->saveSettings();
-    m_navigationWidget->saveSettings(m_settings);
+    m_navigationWidget->saveSettings(settings);
 }
 
 void MainWindow::updateAdditionalContexts(const Context &remove, const Context &add)
@@ -1268,9 +1256,15 @@ bool MainWindow::showWarningWithOptions(const QString &title,
 
 void MainWindow::restoreWindowState()
 {
-    m_settings->beginGroup(QLatin1String(settingsGroup));
-    if (!restoreGeometry(m_settings->value(QLatin1String(windowGeometryKey)).toByteArray()))
+    QSettings *settings = PluginManager::settings();
+    settings->beginGroup(QLatin1String(settingsGroup));
+    if (!restoreGeometry(settings->value(QLatin1String(windowGeometryKey)).toByteArray()))
         resize(1008, 700); // size without window decoration
-    restoreState(m_settings->value(QLatin1String(windowStateKey)).toByteArray());
-    m_settings->endGroup();
+    restoreState(settings->value(QLatin1String(windowStateKey)).toByteArray());
+    settings->endGroup();
+    show();
+    m_statusBarManager->restoreSettings();
 }
+
+} // namespace Internal
+} // namespace Core

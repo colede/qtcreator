@@ -75,11 +75,12 @@ private:
     inline const GitSubmitEditorWidget *submitEditorWidget() const;
 
     VcsBase::SubmitFileModel *m_model;
-    QString m_commitEncoding;
+    QTextCodec *m_commitEncoding;
     CommitType m_commitType;
     QString m_amendSHA1;
     bool m_forceClose;
     QString m_workingDirectory;
+    bool m_firstUpdate;
 };
 
 } // namespace Internal

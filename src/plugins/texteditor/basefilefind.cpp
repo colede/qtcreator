@@ -132,7 +132,8 @@ void BaseFileFind::runNewSearch(const QString &txt, Core::FindFlags findFlags,
         updateComboEntries(d->m_filterCombo, true);
     SearchResult *search = Core::SearchResultWindow::instance()->startNewSearch(label(),
                            toolTip().arg(Core::IFindFilter::descriptionForFindFlags(findFlags)),
-                           txt, searchMode, QString::fromLatin1("TextEditor"));
+                           txt, searchMode, Core::SearchResultWindow::PreserveCaseEnabled,
+                           QString::fromLatin1("TextEditor"));
     search->setTextToReplace(txt);
     search->setSearchAgainSupported(true);
     FileFindParameters parameters;
@@ -181,7 +182,7 @@ void BaseFileFind::runSearch(Core::SearchResult *search)
             ITextEditorDocument::openedTextDocumentContents()));
     }
     FutureProgress *progress =
-        ProgressManager::addTask(watcher->future(), tr("Search"), Constants::TASK_SEARCH);
+        ProgressManager::addTask(watcher->future(), tr("Searching"), Constants::TASK_SEARCH);
     progress->setWidget(label);
     progress->setStatusBarWidget(statusLabel);
     connect(progress, SIGNAL(clicked()), search, SLOT(popup()));

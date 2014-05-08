@@ -60,7 +60,6 @@ ValgrindRunControl::ValgrindRunControl(const AnalyzerStartParameters &sp,
     : AnalyzerRunControl(sp, runConfiguration),
       m_settings(0),
       m_progress(new QFutureInterface<void>()),
-      m_progressWatcher(new QFutureWatcher<void>()),
       m_isStopping(false)
 {
     if (runConfiguration)
@@ -70,10 +69,6 @@ ValgrindRunControl::ValgrindRunControl(const AnalyzerStartParameters &sp,
     if (!m_settings)
         m_settings = ValgrindPlugin::globalSettings();
 
-    connect(m_progressWatcher, SIGNAL(canceled()),
-            this, SLOT(handleProgressCanceled()));
-    connect(m_progressWatcher, SIGNAL(finished()),
-            this, SLOT(handleProgressFinished()));
 }
 
 ValgrindRunControl::~ValgrindRunControl()
@@ -88,9 +83,10 @@ bool ValgrindRunControl::startEngine()
     FutureProgress *fp = ProgressManager::addTask(m_progress->future(),
                                                         progressTitle(), "valgrind");
     fp->setKeepOnFinish(FutureProgress::HideOnFinish);
+    connect(fp, SIGNAL(canceled()), this, SLOT(handleProgressCanceled()));
+    connect(fp, SIGNAL(finished()), this, SLOT(handleProgressFinished()));
     m_progress->setProgressRange(0, progressMaximum);
     m_progress->reportStarted();
-    m_progressWatcher->setFuture(m_progress->future());
     m_progress->setProgressValue(progressMaximum / 10);
 
     const AnalyzerStartParameters &sp = startParameters();
@@ -113,8 +109,8 @@ bool ValgrindRunControl::startEngine()
     run->setConnectionParameters(sp.connParams);
     run->setStartMode(sp.startMode);
 
-    connect(run, SIGNAL(processOutputReceived(QByteArray,Utils::OutputFormat)),
-            SLOT(receiveProcessOutput(QByteArray,Utils::OutputFormat)));
+    connect(run, SIGNAL(processOutputReceived(QString,Utils::OutputFormat)),
+            SLOT(receiveProcessOutput(QString,Utils::OutputFormat)));
     connect(run, SIGNAL(processErrorReceived(QString,QProcess::ProcessError)),
             SLOT(receiveProcessError(QString,QProcess::ProcessError)));
     connect(run, SIGNAL(finished()), SLOT(runnerFinished()));
@@ -178,13 +174,13 @@ void ValgrindRunControl::runnerFinished()
 
     m_progress->reportFinished();
 
-    disconnect(runner(), SIGNAL(processOutputReceived(QByteArray,Utils::OutputFormat)),
-               this, SLOT(receiveProcessOutput(QByteArray,Utils::OutputFormat)));
+    disconnect(runner(), SIGNAL(processOutputReceived(QString,Utils::OutputFormat)),
+               this, SLOT(receiveProcessOutput(QString,Utils::OutputFormat)));
     disconnect(runner(), SIGNAL(finished()),
                this, SLOT(runnerFinished()));
 }
 
-void ValgrindRunControl::receiveProcessOutput(const QByteArray &output, OutputFormat format)
+void ValgrindRunControl::receiveProcessOutput(const QString &output, OutputFormat format)
 {
     int progress = m_progress->progressValue();
     if (progress < 5 * progressMaximum / 10)
@@ -192,7 +188,7 @@ void ValgrindRunControl::receiveProcessOutput(const QByteArray &output, OutputFo
     else if (progress < 9 * progressMaximum / 10)
         progress += progress / 1000;
     m_progress->setProgressValue(progress);
-    appendMessage(QString::fromLocal8Bit(output), format);
+    appendMessage(output, format);
 }
 
 void ValgrindRunControl::receiveProcessError(const QString &message, QProcess::ProcessError error)

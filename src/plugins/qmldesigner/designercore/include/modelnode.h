@@ -110,8 +110,9 @@ public:
     void setParentProperty(const ModelNode &newParentNode, const PropertyName &propertyName);
     bool hasParentProperty() const;
 
-    const QList<ModelNode> allDirectSubModelNodes() const;
+    const QList<ModelNode> directSubModelNodes() const;
     const QList<ModelNode> allSubModelNodes() const;
+    const QList<ModelNode> allSubModelNodesAndThisNode() const;
     bool hasAnySubModelNodes() const;
 
     //###
@@ -151,8 +152,10 @@ public:
 
     QString id() const;
     QString validId();
-    void setId(const QString &id);
+    void setIdWithRefactoring(const QString &id);
+    void setIdWithoutRefactoring(const QString &id);
     static bool isValidId(const QString &id);
+    bool hasId() const;
 
     Model *model() const;
     AbstractView *view() const;
@@ -172,6 +175,7 @@ public:
 
     QVariant auxiliaryData(const PropertyName &name) const;
     void setAuxiliaryData(const PropertyName &name, const QVariant &data) const;
+    void removeAuxiliaryData(const PropertyName &name);
     bool hasAuxiliaryData(const PropertyName &name) const;
     QHash<PropertyName, QVariant> auxiliaryData() const;
 

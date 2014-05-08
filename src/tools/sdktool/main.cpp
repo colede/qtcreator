@@ -32,6 +32,7 @@
 #include "operation.h"
 
 #include "adddebuggeroperation.h"
+#include "adddeviceoperation.h"
 #include "addkeysoperation.h"
 #include "addkitoperation.h"
 #include "addqtoperation.h"
@@ -40,6 +41,7 @@
 #include "findvalueoperation.h"
 #include "getoperation.h"
 #include "rmdebuggeroperation.h"
+#include "rmdeviceoperation.h"
 #include "rmkeysoperation.h"
 #include "rmkitoperation.h"
 #include "rmqtoperation.h"
@@ -162,19 +164,25 @@ int main(int argc, char *argv[])
     Settings settings;
 
     QList<Operation *> operations;
-    operations << new AddDebuggerOperation
-               << new AddKeysOperation
-               << new AddKitOperation
+    operations << new AddKeysOperation
+
+               << new AddDebuggerOperation
+               << new AddDeviceOperation
                << new AddQtOperation
                << new AddToolChainOperation
-               << new FindKeyOperation
-               << new FindValueOperation
+
+               << new AddKitOperation
+
                << new GetOperation
-               << new RmDebuggerOperation
-               << new RmKeysOperation
                << new RmKitOperation
+               << new RmDebuggerOperation
+               << new RmDeviceOperation
+               << new RmKeysOperation
                << new RmQtOperation
-               << new RmToolChainOperation;
+               << new RmToolChainOperation
+
+               << new FindKeyOperation
+               << new FindValueOperation;
 
 #ifdef WITH_TESTS
     std::cerr << std::endl << std::endl << "Starting tests..." << std::endl;

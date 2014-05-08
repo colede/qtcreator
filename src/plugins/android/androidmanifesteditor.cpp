@@ -64,11 +64,6 @@ Android::Internal::AndroidManifestEditor::AndroidManifestEditor(AndroidManifestE
     setWidget(editorWidget);
 }
 
-Core::Id AndroidManifestEditor::id() const
-{
-    return Constants::ANDROID_MANIFEST_EDITOR_ID;
-}
-
 bool AndroidManifestEditor::open(QString *errorString, const QString &fileName, const QString &realFileName)
 {
     return widget()->open(errorString, fileName, realFileName);

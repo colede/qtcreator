@@ -39,75 +39,69 @@ def qdump____m128(d, value):
     d.putEmptyValue()
     d.putNumChild(1)
     if d.isExpanded():
-        d.putArrayData(d.lookupType("float"), value.address, 4)
+        d.putArrayData(value.address, 4, d.lookupType("float"))
 
 def qdump____m256(d, value):
     d.putEmptyValue()
     d.putNumChild(1)
     if d.isExpanded():
-        d.putArrayData(d.lookupType("float"), value.address, 8)
+        d.putArrayData(value.address, 8, d.lookupType("float"))
+
+def qdump____m512(d, value):
+    d.putEmptyValue()
+    d.putNumChild(1)
+    if d.isExpanded():
+        d.putArrayData(value.address, 16, d.lookupType("float"))
 
 def qdump____m128d(d, value):
     d.putEmptyValue()
     d.putNumChild(1)
     if d.isExpanded():
-        d.putArrayData(d.lookupType("double"), value.address, 2)
+        d.putArrayData(value.address, 2, d.lookupType("double"))
 
 def qdump____m256d(d, value):
     d.putEmptyValue()
     d.putNumChild(1)
     if d.isExpanded():
-        d.putArrayData(d.lookupType("double"), value.address, 4)
+        d.putArrayData(value.address, 4, d.lookupType("double"))
+
+def qdump____m512d(d, value):
+    d.putEmptyValue()
+    d.putNumChild(1)
+    if d.isExpanded():
+        d.putArrayData(value.address, 8, d.lookupType("double"))
 
 def qdump____m128i(d, value):
     data = d.readMemory(value.address, 16)
     d.putValue(':'.join("%04x" % int(data[i:i+4], 16) for i in xrange(0, 32, 4)))
     d.putNumChild(4)
     if d.isExpanded():
-        # fake 4 children as arrays
         with Children(d):
-            with SubItem(d, "uint8x16"):
-                d.putEmptyValue()
-                d.putType("unsigned char [16]")
-                d.putArrayData(d.lookupType("unsigned char"), value.address, 16)
-                d.putAddress(value.address)
-            with SubItem(d, "uint16x8"):
-                d.putEmptyValue()
-                d.putType("unsigned short [8]")
-                d.putArrayData(d.lookupType("unsigned short"), value.address, 8)
-            with SubItem(d, "uint32x4"):
-                d.putEmptyValue()
-                d.putType("unsigned int [4]")
-                d.putArrayData(d.lookupType("unsigned int"), value.address, 4)
-            with SubItem(d, "uint64x2"):
-                d.putEmptyValue()
-                d.putType("unsigned long long [2]")
-                d.putArrayData(d.lookupType("unsigned long long"), value.address, 2)
+            d.putArrayItem("uint8x16", value.address, 16, "unsigned char")
+            d.putArrayItem("uint16x8", value.address, 8, "unsigned short")
+            d.putArrayItem("uint32x4", value.address, 4, "unsigned int")
+            d.putArrayItem("uint64x2", value.address, 2, "unsigned long long")
 
 def qdump____m256i(d, value):
     data = d.readMemory(value.address, 32)
     d.putValue(':'.join("%04x" % int(data[i:i+4], 16) for i in xrange(0, 64, 4)))
     d.putNumChild(4)
     if d.isExpanded():
-        # fake 4 children as arrays
         with Children(d):
-            with SubItem(d, "uint8x32"):
-                d.putEmptyValue()
-                d.putType("unsigned char [32]")
-                d.putArrayData(d.lookupType("unsigned char"), value.address, 32)
-                d.putAddress(value.address)
-            with SubItem(d, "uint16x8"):
-                d.putEmptyValue()
-                d.putType("unsigned short [16]")
-                d.putArrayData(d.lookupType("unsigned short"), value.address, 16)
-            with SubItem(d, "uint32x8"):
-                d.putEmptyValue()
-                d.putType("unsigned int [8]")
-                d.putArrayData(d.lookupType("unsigned int"), value.address, 8)
-            with SubItem(d, "uint64x4"):
-                d.putEmptyValue()
-                d.putType("unsigned long long [4]")
-                d.putArrayData(d.lookupType("unsigned long long"), value.address, 4)
+            d.putArrayItem("uint8x32", value.address, 32, "unsigned char")
+            d.putArrayItem("uint16x16", value.address, 16, "unsigned short")
+            d.putArrayItem("uint32x8", value.address, 8, "unsigned int")
+            d.putArrayItem("uint64x4", value.address, 4, "unsigned long long")
+
+def qdump____m512i(d, value):
+    data = d.readMemory(value.address, 64)
+    d.putValue(':'.join("%04x" % int(data[i:i+4], 16) for i in xrange(0, 64, 4))
+               + ', ' + ':'.join("%04x" % int(data[i:i+4], 16) for i in xrange(64, 128, 4)))
+    d.putNumChild(2)
+    if d.isExpanded():
+        with Children(d):
+            d.putArrayItem("uint32x16", value.address, 16, "unsigned int")
+            d.putArrayItem("uint64x8", value.address, 8, "unsigned long long")
 
 #######################################################################
 #
@@ -119,17 +113,21 @@ def qdump____m256i(d, value):
 #    return "Transposed"
 
 def qdump__Eigen__Matrix(d, value):
-    innerType = d.templateArgument(value.type, 0)
-    storage = value["m_storage"]
-    options = d.numericTemplateArgument(value.type, 3)
+    listType = d.directBaseClass(value.type)
+    d.putItem(value.cast(listType))
+    d.putBetterType(value.type)
+
+def qdump__Eigen__PlainObjectBase(d, value):
+    matrixType = d.templateArgument(value.type, 0)
+    innerType = d.templateArgument(matrixType, 0)
+    options = d.numericTemplateArgument(matrixType, 3)
     rowMajor = (int(options) & 0x1)
-    argRow = d.numericTemplateArgument(value.type, 1)
-    argCol = d.numericTemplateArgument(value.type, 2)
-    nrows = value["m_storage"]["m_rows"] if argRow == -1 else int(argRow)
-    ncols = value["m_storage"]["m_cols"] if argCol == -1 else int(argCol)
-    p = storage["m_data"]
-    if d.isStructType(p.type): # Static
-        p = p["array"].cast(innerType.pointer())
+    argRow = d.numericTemplateArgument(matrixType, 1)
+    argCol = d.numericTemplateArgument(matrixType, 2)
+    storage = value["m_storage"]
+    nrows = toInteger(storage["m_rows"] if argRow == -1 else argRow)
+    ncols = toInteger(storage["m_cols"] if argCol == -1 else argCol)
+    p = d.createPointerValue(d.addressOf(value), innerType)
     d.putValue("(%s x %s), %s" % (nrows, ncols, ["ColumnMajor", "RowMajor"][rowMajor]))
     d.putField("keeporder", "1")
     d.putNumChild(nrows * ncols)
@@ -363,14 +361,9 @@ if False:
 def qdump__KDSoapValue1(d, value):
     inner = value["d"]["d"].dereference()
     d.putStringValue(inner["m_name"])
-    if d.isExpanded():
-        with Children(d):
-            d.putFields(inner)
+    d.putPlainChildren(inner)
 
 def qdump__KDSoapValue(d, value):
     p = (value.cast(lookupType("char*")) + 4).dereference().cast(lookupType("QString"))
     d.putStringValue(p)
-    if d.isExpanded():
-        with Children(d):
-            data = value["d"]["d"].dereference()
-            d.putFields(data)
+    d.putPlainChildren(value["d"]["d"].dereference())

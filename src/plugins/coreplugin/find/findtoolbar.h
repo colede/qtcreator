@@ -33,9 +33,14 @@
 #include "ui_findwidget.h"
 #include "currentdocumentfind.h"
 
+#include <coreplugin/id.h>
 #include <utils/styledbar.h>
 
 #include <QTimer>
+
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+QT_END_NAMESPACE
 
 namespace Core {
 
@@ -43,6 +48,26 @@ class FindToolBarPlaceHolder;
 class FindPlugin;
 
 namespace Internal {
+
+class OptionsPopup : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit OptionsPopup(QWidget *parent);
+
+protected:
+    bool event(QEvent *ev);
+    bool eventFilter(QObject *obj, QEvent *ev);
+
+private slots:
+    void actionChanged();
+
+private:
+    QCheckBox *createCheckboxForCommand(Id id);
+
+    QMap<QAction *, QCheckBox *> m_checkboxMap;
+};
 
 class FindToolBar : public Utils::StyledBar
 {
@@ -85,6 +110,7 @@ private slots:
     void updateFindAction();
     void updateToolBar();
     void findFlagsChanged();
+    void findEditButtonClicked();
 
     void setCaseSensitive(bool sensitive);
     void setWholeWord(bool wholeOnly);
@@ -93,14 +119,14 @@ private slots:
 
     void adaptToCandidate();
 
+    bool setFocusToCurrentFindSupport();
+
 protected:
     bool focusNextPrevChild(bool next);
-    void keyPressEvent(QKeyEvent *event);
 
 private:
     void installEventFilters();
     void invokeClearResults();
-    bool setFocusToCurrentFindSupport();
     void setFindFlag(FindFlag flag, bool enabled);
     bool hasFindFlag(FindFlag flag);
     FindFlags effectiveFindFlags();
@@ -114,13 +140,12 @@ private:
     void updateIcons();
     void updateFlagMenus();
 
-    bool shouldSetFocusOnKeyEvent(QKeyEvent *event);
-
     FindPlugin *m_plugin;
     CurrentDocumentFind *m_currentDocumentFind;
     Ui::FindWidget m_ui;
     QCompleter *m_findCompleter;
     QCompleter *m_replaceCompleter;
+    QAction *m_goToCurrentFindAction;
     QAction *m_findInDocumentAction;
     QAction *m_findNextSelectedAction;
     QAction *m_findPreviousSelectedAction;

@@ -143,6 +143,7 @@ void Document::addRange(const QTextCursor &cursor, GLSL::Scope *scope)
 GLSLTextEditorWidget::GLSLTextEditorWidget(QWidget *parent)
     : TextEditor::BaseTextEditorWidget(parent)
 {
+    baseTextDocument()->setId(GLSLEditor::Constants::C_GLSLEDITOR_ID);
     baseTextDocument()->setIndenter(new GLSLIndenter());
     ctor();
 }
@@ -204,11 +205,6 @@ Core::IEditor *GLSLEditorEditable::duplicate()
                 qobject_cast<GLSLTextEditorWidget *>(editorWidget()));
     TextEditor::TextEditorSettings::initializeEditor(newEditor);
     return newEditor->editor();
-}
-
-Core::Id GLSLEditorEditable::id() const
-{
-    return GLSLEditor::Constants::C_GLSLEDITOR_ID;
 }
 
 bool GLSLEditorEditable::open(QString *errorString, const QString &fileName, const QString &realFileName)

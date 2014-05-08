@@ -63,14 +63,13 @@ protected:
 
     ValgrindBaseSettings *m_settings;
     QFutureInterface<void> *m_progress;
-    QFutureWatcher<void> *m_progressWatcher;
 
 private slots:
     void handleProgressCanceled();
     void handleProgressFinished();
     void runnerFinished();
 
-    void receiveProcessOutput(const QByteArray &output, Utils::OutputFormat format);
+    void receiveProcessOutput(const QString &output, Utils::OutputFormat format);
     void receiveProcessError(const QString &message, QProcess::ProcessError error);
 
 private:

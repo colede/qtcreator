@@ -66,7 +66,7 @@ BaseQtVersion *QtVersionFactory::createQtVersionFromQMakePath(const Utils::FileN
     QMakeVfs vfs;
     ProFileGlobals globals;
     globals.setProperties(versionInfo);
-    ProMessageHandler msgHandler(true);
+    ProMessageHandler msgHandler(false);
     ProFileCacheManager::instance()->incRefCount();
     QMakeParser parser(ProFileCacheManager::instance()->cache(), &vfs, &msgHandler);
     ProFileEvaluator evaluator(&globals, &parser, &vfs, &msgHandler);
@@ -84,6 +84,6 @@ BaseQtVersion *QtVersionFactory::createQtVersionFromQMakePath(const Utils::FileN
     }
     ProFileCacheManager::instance()->decRefCount();
     if (error)
-        *error = tr("No factory found for qmake: '%1'").arg(qmakePath.toUserOutput());
+        *error = tr("No factory found for qmake: \"%1\"").arg(qmakePath.toUserOutput());
     return 0;
 }

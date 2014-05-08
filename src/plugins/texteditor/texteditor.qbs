@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcPlugin
 
@@ -266,6 +266,14 @@ QtcPlugin {
             "snippetssettingspage.cpp",
             "snippetssettingspage.h",
             "snippetssettingspage.ui",
+        ]
+    }
+
+    Group {
+        name: "Tests"
+        condition: project.testsEnabled
+        files: [
+            "basetexteditor_test.cpp",
         ]
     }
 }

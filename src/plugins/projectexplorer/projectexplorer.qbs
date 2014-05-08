@@ -1,4 +1,4 @@
-import qbs.base 1.0
+import qbs 1.0
 
 import QtcFunctions
 import QtcPlugin
@@ -60,6 +60,11 @@ QtcPlugin {
             "deployconfiguration.cpp", "deployconfiguration.h",
             "deployconfigurationmodel.cpp", "deployconfigurationmodel.h",
             "deploymentdata.h",
+            "deploymentdataview.cpp",
+            "deploymentdataview.h",
+            "deploymentdataview.ui",
+            "deploymentdatamodel.cpp",
+            "deploymentdatamodel.h",
             "doubletabwidget.cpp", "doubletabwidget.h", "doubletabwidget.ui",
             "editorconfiguration.cpp", "editorconfiguration.h",
             "editorsettingspropertiespage.cpp", "editorsettingspropertiespage.h", "editorsettingspropertiespage.ui",

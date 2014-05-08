@@ -40,89 +40,71 @@ namespace ProjectExplorer {
 
 class Project;
 
-namespace Internal { class UserFileVersionHandler; }
+namespace Internal { class VersionUpgrader; }
+
+class SettingsAccessorPrivate;
 
 class SettingsAccessor
 {
 public:
     SettingsAccessor(Project *project);
-    ~SettingsAccessor();
+    virtual ~SettingsAccessor();
 
     Project *project() const;
 
-    QVariantMap restoreSettings() const;
-    bool saveSettings(const QVariantMap &map) const;
+    QVariantMap restoreSettings(QWidget *parent) const;
+    bool saveSettings(const QVariantMap &data, QWidget *parent) const;
+
+    static QVariantMap setVersionInMap(const QVariantMap &data, int version);
+    static int versionFromMap(const QVariantMap &data);
+    static int originalVersionFromMap(const QVariantMap &data);
+    static QVariantMap setOriginalVersionInMap(const QVariantMap &data, int version);
+
+    int currentVersion() const;
+    int firstSupportedVersion() const;
+
+    bool addVersionUpgrader(Internal::VersionUpgrader *upgrader); // takes ownership of upgrader
+
+protected:
+    QVariantMap readFile(const Utils::FileName &path) const;
+    QVariantMap upgradeSettings(const QVariantMap &data, int toVersion) const;
+    virtual QVariantMap prepareSettings(const QVariantMap &data) const;
+
+    virtual bool isBetterMatch(const QVariantMap &origData, const QVariantMap &newData) const;
 
 private:
-    // Takes ownership of the handler!
-    void addVersionHandler(Internal::UserFileVersionHandler *handler);
-
-    QStringList findSettingsFiles(const QString &suffix) const;
+    QList<Utils::FileName> settingsFiles(const QString &suffix) const;
     static QByteArray creatorId();
     QString defaultFileName(const QString &suffix) const;
-    int currentVersion() const;
     void backupUserFile() const;
 
-    // The relevant data from the settings currently in use.
-    class SettingsData
-    {
-    public:
-        SettingsData() : m_version(-1), m_usingBackup(false) {}
-        SettingsData(const QVariantMap &map) : m_version(-1), m_usingBackup(false), m_map(map) {}
+    QVariantMap readUserSettings(QWidget *parent) const;
+    QVariantMap readSharedSettings(QWidget *parent) const;
+    QVariantMap mergeSettings(const QVariantMap &userMap, const QVariantMap &sharedMap) const;
 
-        void clear();
-        bool isValid() const;
-        QByteArray environmentId() const { return m_environmentId; }
-        int version() const { return m_version; }
-        Utils::FileName fileName() const { return m_fileName; }
+    static QByteArray environmentIdFromMap(const QVariantMap &data);
 
-        int m_version;
-        QByteArray m_environmentId;
-        bool m_usingBackup;
-        QVariantMap m_map;
-        Utils::FileName m_fileName;
-    };
-
-    void incrementVersion(SettingsData &data) const;
-
-    SettingsData readUserSettings() const;
-    SettingsData readSharedSettings() const;
-    SettingsData findBestSettings(const QStringList &candidates) const;
-    SettingsData mergeSettings(const SettingsData &user, const SettingsData &shared) const;
-
-    // The entity which actually reads/writes to the settings file.
-    class FileAccessor
-    {
-    public:
-        FileAccessor(const QString &defaultSuffix,
-                     const QString &environmentSuffix,
-                     bool envSpecific,
-                     SettingsAccessor *accessor);
-        ~FileAccessor();
-
-        bool readFile(SettingsData *settings) const;
-        bool writeFile(const SettingsData *settings) const;
-
-        QString suffix() const { return m_suffix; }
-
-    private:
-        void assignSuffix(const QString &defaultSuffix, const QString &environmentSuffix);
-
-        QString m_suffix;
-        bool m_environmentSpecific;
-        SettingsAccessor *m_accessor;
-        mutable Utils::PersistentSettingsWriter *m_writer;
-    };
-
-    QMap<int, Internal::UserFileVersionHandler *> m_handlers;
-    int m_firstVersion;
-    int m_lastVersion;
-    const FileAccessor m_userFileAcessor;
-    const FileAccessor m_sharedFileAcessor;
+    QString m_userSuffix;
+    QString m_sharedSuffix;
 
     Project *m_project;
+
+    SettingsAccessorPrivate *d;
+
+    friend class SettingsAccessorPrivate;
 };
 
+namespace Internal {
+class UserFileAccessor : public SettingsAccessor
+{
+public:
+    UserFileAccessor(Project *project);
+
+protected:
+    QVariantMap prepareSettings(const QVariantMap &data) const;
+};
+
+} // namespace Internal
 } // namespace ProjectExplorer
 
 #endif // SETTINGSACCESSOR_H

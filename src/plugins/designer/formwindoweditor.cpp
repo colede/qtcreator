@@ -123,11 +123,6 @@ void FormWindowEditor::syncXmlEditor()
     d->m_widget->formWindowFile()->syncXmlFromFormWindow();
 }
 
-Core::Id FormWindowEditor::id() const
-{
-    return Core::Id(Designer::Constants::K_DESIGNER_XML_EDITOR_ID);
-}
-
 QWidget *FormWindowEditor::toolBar()
 {
     return 0;

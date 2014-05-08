@@ -125,7 +125,6 @@ bool ProjectFileConverter::convertFile(Core::GeneratedFile &file, QString &error
     QStringList resources;
     QStringList otherFiles;
 
-    QSet<QString> entries;
     foreach (const QString &filePath, convertedProjectContext().collectedFiles()) {
         QString ext = filePath.section(QLatin1Char('.'), -1);
         if (ext.compare(QLatin1String("c"), Qt::CaseInsensitive) == 0)
@@ -159,7 +158,7 @@ bool ProjectFileConverter::convertFile(Core::GeneratedFile &file, QString &error
             // include all the content of the src directory
             otherFiles << filePath;
         else if (ext.compare(QLatin1String("log"), Qt::CaseInsensitive) != 0)
-                log.logWarning(tr("File '%1' not listed in '%2' file, should it be?")
+                log.logWarning(tr("File \"%1\" not listed in \"%2\" file, should it be?")
                         .arg(filePath).arg(file.path()));
     }
 

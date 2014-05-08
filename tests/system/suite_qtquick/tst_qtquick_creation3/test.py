@@ -33,12 +33,12 @@ def main():
     startApplication("qtcreator" + SettingsPath)
     if not startedWithoutPluginError():
         return
-    for quickVersion in ["1.1"]:#, "2.1", "2.2"]: # TODO add Qt5.2 and/or Qt5.1 kit to enable these
+    for quickVersion in ["1.1", "2.1", "2.2"]:
         # using a temporary directory won't mess up a potentially existing
         workingDir = tempDir()
         projectName = createNewQtQuickUI(workingDir, quickVersion)
         test.log("Running project Qt Quick %s UI" % quickVersion)
-        qmlViewer = modifyRunSettingsForHookIntoQtQuickUI(1, workingDir, projectName, 11223, quickVersion)
+        qmlViewer = modifyRunSettingsForHookIntoQtQuickUI(1, 0, workingDir, projectName, 11223, quickVersion)
         if qmlViewer!=None:
             qmlViewerPath = os.path.dirname(qmlViewer)
             qmlViewer = os.path.basename(qmlViewer)

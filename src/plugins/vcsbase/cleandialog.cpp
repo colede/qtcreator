@@ -223,7 +223,7 @@ void CleanDialog::addFile(const QString &workingDirectory, QString fileName, boo
     // Tooltip with size information
     if (fi.isFile()) {
         const QString lastModified = fi.lastModified().toString(Qt::DefaultLocaleShortDate);
-        nameItem->setToolTip(tr("%n bytes, last modified %1", 0, fi.size()).arg(lastModified));
+        nameItem->setToolTip(tr("%n bytes, last modified %1.", 0, fi.size()).arg(lastModified));
     }
     d->m_filesModel->appendRow(nameItem);
 }
@@ -266,7 +266,7 @@ bool CleanDialog::promptToDelete()
             Qt::QueuedConnection);
 
     QFuture<void> task = QtConcurrent::run(cleanTask, &Internal::CleanFilesTask::run);
-    const QString taskName = tr("Cleaning %1").
+    const QString taskName = tr("Cleaning \"%1\"").
                              arg(QDir::toNativeSeparators(d->m_workingDirectory));
     Core::ProgressManager::addTask(task, taskName, "VcsBase.cleanRepository");
     return true;

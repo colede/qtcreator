@@ -70,6 +70,6 @@ Column {
    }
 
    TextInputSection {
-
+       isTextInput: true
    }
 }

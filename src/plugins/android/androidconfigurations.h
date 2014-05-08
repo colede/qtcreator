@@ -56,11 +56,24 @@ struct AndroidDeviceInfo
     QString serialNumber;
     QStringList cpuAbi;
     int sdk;
+    enum State { OkState, UnAuthorizedState, OfflineState };
+    State state;
     bool unauthorized;
     enum AndroidDeviceType { Hardware, Emulator };
     AndroidDeviceType type;
 
     static QStringList adbSelector(const QString &serialNumber);
+};
+
+class SdkPlatform
+{
+public:
+    SdkPlatform()
+        : apiLevel(-1)
+    {}
+    int apiLevel;
+    QString name;
+    QStringList abis;
 };
 
 class AndroidConfig
@@ -71,7 +84,8 @@ public:
     void load(const QSettings &settings);
     void save(QSettings &settings) const;
 
-    QStringList sdkTargets(int minApiLevel = 0) const;
+    static QStringList apiLevelNamesFor(const QList<SdkPlatform> &platforms);
+    QList<SdkPlatform> sdkTargets(int minApiLevel = 0) const;
 
     Utils::FileName sdkLocation() const;
     void setSdkLocation(const Utils::FileName &sdkLocation);
@@ -113,9 +127,18 @@ public:
     Utils::FileName stripPath(ProjectExplorer::Abi::Architecture architecture, const QString &ndkToolChainVersion) const;
     Utils::FileName readelfPath(ProjectExplorer::Abi::Architecture architecture, const QString &ndkToolChainVersion) const;
 
+    class CreateAvdInfo
+    {
+    public:
+        QString target;
+        QString name;
+        QString abi;
+        int sdcardSize;
+        QString error; // only used in the return value of createAVD
+    };
 
-    QString createAVD(QWidget *parent, int minApiLevel = 0, QString targetArch = QString()) const;
-    QString createAVD(const QString &target, const QString &name, const QString &abi, int sdcardSize) const;
+    CreateAvdInfo gatherCreateAVDInfo(QWidget *parent, int minApiLevel = 0, QString targetArch = QString()) const;
+    QFuture<CreateAvdInfo> createAVD(CreateAvdInfo info) const;
     bool removeAVD(const QString &name) const;
 
     QVector<AndroidDeviceInfo> connectedDevices(QString *error = 0) const;
@@ -135,9 +158,10 @@ public:
     bool waitForBooted(const QString &serialNumber, const QFutureInterface<bool> &fi) const;
     bool isConnected(const QString &serialNumber) const;
 
-    QString highestAndroidSdk() const;
-
+    SdkPlatform highestAndroidSdk() const;
 private:
+    static CreateAvdInfo createAVDImpl(CreateAvdInfo info, Utils::FileName androidToolPath, Utils::Environment env);
+
     Utils::FileName toolPath(ProjectExplorer::Abi::Architecture architecture, const QString &ndkToolChainVersion) const;
     Utils::FileName openJDKBinPath() const;
     int getSDKVersion(const QString &device) const;
@@ -158,7 +182,8 @@ private:
 
     //caches
     mutable bool m_availableSdkPlatformsUpToDate;
-    mutable QVector<int> m_availableSdkPlatforms;
+    mutable QVector<SdkPlatform> m_availableSdkPlatforms;
+    static bool sortSdkPlatformByApiLevel(const SdkPlatform &a, const SdkPlatform &b);
 
     mutable bool m_NdkInformationUpToDate;
     mutable QString m_toolchainHost;
@@ -173,7 +198,7 @@ class AndroidConfigurations : public QObject
     Q_OBJECT
 
 public:
-    static AndroidConfig currentConfig();
+    static const AndroidConfig &currentConfig();
     static void setConfig(const AndroidConfig &config);
     static AndroidConfigurations *instance();
 
@@ -183,6 +208,7 @@ public:
     static QString defaultDevice(ProjectExplorer::Project *project, const QString &abi); // serial number or avd name
 public slots:
     static void clearDefaultDevices(ProjectExplorer::Project *project);
+    static void updateToolChainList();
     static void updateAutomaticKitList();
 
 signals:

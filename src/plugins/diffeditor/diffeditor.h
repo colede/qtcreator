@@ -47,6 +47,7 @@ namespace TextEditor { class BaseTextEditorWidget; }
 namespace DiffEditor {
 
 class DiffEditorDocument;
+class DiffEditorGuiController;
 class SideBySideDiffEditorWidget;
 
 class DIFFEDITOR_EXPORT DiffEditor : public Core::IEditor
@@ -66,7 +67,6 @@ public:
 
     bool open(QString *errorString, const QString &fileName, const QString &realFileName);
     Core::IDocument *document();
-    Core::Id id() const;
 
     QWidget *toolBar();
 
@@ -88,7 +88,8 @@ private:
     QSharedPointer<DiffEditorDocument> m_document;
     TextEditor::BaseTextEditorWidget *m_descriptionWidget;
     SideBySideDiffEditorWidget *m_diffWidget;
-    DiffEditorController *m_diffEditorController;
+    DiffEditorController *m_controller;
+    DiffEditorGuiController *m_guiController;
     QToolBar *m_toolBar;
     QComboBox *m_entriesComboBox;
     QAction *m_toggleDescriptionAction;

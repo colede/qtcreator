@@ -35,6 +35,7 @@
 #include "qbsprojectmanagerconstants.h"
 #include "qbsprojectmanagerplugin.h"
 
+#include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
 #include <extensionsystem/pluginmanager.h>
 #include <projectexplorer/kit.h>
@@ -63,7 +64,7 @@ QbsManager::QbsManager(Internal::QbsProjectManagerPlugin *plugin) :
     m_plugin(plugin),
     m_defaultPropertyProvider(new DefaultPropertyProvider)
 {
-    m_settings = new qbs::Settings(QLatin1String("QtProject"), QLatin1String("qbs"));
+    m_settings = new qbs::Settings(Core::ICore::userResourcePath());
 
     setObjectName(QLatin1String("QbsProjectManager"));
     connect(ProjectExplorer::KitManager::instance(), SIGNAL(kitsChanged()), this, SLOT(pushKitsToQbs()));
@@ -100,7 +101,7 @@ ProjectExplorer::Project *QbsManager::openProject(const QString &fileName, QStri
 {
     if (!QFileInfo(fileName).isFile()) {
         if (errorString)
-            *errorString = tr("Failed opening project '%1': Project is not a file")
+            *errorString = tr("Failed opening project \"%1\": Project is not a file.")
                 .arg(fileName);
         return 0;
     }
@@ -149,6 +150,12 @@ void QbsManager::addQtProfileFromKit(const QString &profileName, const ProjectEx
         return;
 
     qbs::QtEnvironment qtEnv;
+    const QList<ProjectExplorer::Abi> abi = qt->qtAbis();
+    if (!abi.empty()) {
+        qtEnv.architecture = ProjectExplorer::Abi::toString(abi.first().architecture());
+        if (abi.first().wordWidth() == 64)
+            qtEnv.architecture.append(QLatin1String("_64"));
+    }
     qtEnv.binaryPath = qt->binPath().toString();
     if (qt->hasDebugBuild())
         qtEnv.buildVariant << QLatin1String("debug");
@@ -172,7 +179,7 @@ void QbsManager::addQtProfileFromKit(const QString &profileName, const ProjectEx
     qtEnv.qtConfigItems = qt->qtConfigValues();
     const qbs::ErrorInfo errorInfo = qbs::setupQtProfile(profileName, settings(), qtEnv);
     if (errorInfo.hasError()) {
-        Core::MessageManager::write(tr("Failed to set up kit for qbs: %1")
+        Core::MessageManager::write(tr("Failed to set up kit for Qbs: %1")
                 .arg(errorInfo.toString()), Core::MessageManager::ModeSwitch);
     }
 }

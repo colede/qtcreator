@@ -31,6 +31,7 @@
 #define QMAKENODES_H
 
 #include "qmakeprojectmanager_global.h"
+#include "proparser/prowriter.h"
 
 #include <coreplugin/idocument.h>
 #include <projectexplorer/projectnodes.h>
@@ -147,7 +148,7 @@ public:
 // ProjectNode interface
     QList<ProjectExplorer::ProjectAction> supportedActions(Node *node) const;
 
-    bool hasBuildTargets() const { return false; }
+    bool showInSimpleTree() const { return false; }
 
     bool canAddSubProject(const QString &proFilePath) const;
 
@@ -158,14 +159,16 @@ public:
     bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = 0);
     bool deleteFiles(const QStringList &filePaths);
     bool renameFile(const QString &filePath, const QString &newFilePath);
-    AddNewInformation addNewInformation(const QStringList &files) const;
+    AddNewInformation addNewInformation(const QStringList &files, Node *context) const;
 
-    bool setProVariable(const QString &var, const QString &value);
+    bool setProVariable(const QString &var, const QStringList &values,
+                        const QString &scope = QString(),
+                        int flags = QmakeProjectManager::Internal::ProWriter::ReplaceValues);
 
     bool folderChanged(const QString &changedFolder, const QSet<Utils::FileName> &newFiles);
 
     bool deploysFolder(const QString &folder) const;
-    QList<ProjectExplorer::RunConfiguration *> runConfigurationsFor(Node *node);
+    QList<ProjectExplorer::RunConfiguration *> runConfigurations() const;
 
     QmakeProFileNode *proFileNode() const;
     QList<QmakePriFileNode*> subProjectNodesExact() const;
@@ -199,6 +202,7 @@ private slots:
 private:
     static bool ensureWriteableProFile(const QString &file);
     static QPair<ProFile *, QStringList> readProFile(const QString &file);
+    static QPair<ProFile *, QStringList> readProFileFromContents(const QString &contents);
     void save(const QStringList &lines);
     bool priFileWritable(const QString &path);
     bool saveModifiedEditors();
@@ -366,9 +370,9 @@ public:
 
     bool isParent(QmakeProFileNode *node);
 
-    bool hasBuildTargets() const;
+    bool showInSimpleTree() const;
 
-    AddNewInformation addNewInformation(const QStringList &files) const;
+    AddNewInformation addNewInformation(const QStringList &files, Node *context) const;
 
     QmakeProjectType projectType() const;
 
@@ -404,7 +408,7 @@ public:
     bool validParse() const;
     bool parseInProgress() const;
 
-    bool hasBuildTargets(QmakeProjectType projectType) const;
+    bool showInSimpleTree(QmakeProjectType projectType) const;
     bool isDebugAndRelease() const;
 
     void setParseInProgress(bool b);
@@ -438,7 +442,7 @@ private:
     QStringList libDirectories(QtSupport::ProFileReader *reader) const;
     QStringList subDirsPaths(QtSupport::ProFileReader *reader, QStringList *subProjectsNotToDeploy, bool silent) const;
 
-    TargetInformation targetInformation(QtSupport::ProFileReader *reader) const;
+    TargetInformation targetInformation(QtSupport::ProFileReader *reader, QtSupport::ProFileReader *readerBuildPass) const;
     void setupInstallsList(const QtSupport::ProFileReader *reader);
 
     bool m_isDeployable;

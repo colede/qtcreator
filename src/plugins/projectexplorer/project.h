@@ -34,6 +34,8 @@
 
 #include <coreplugin/id.h>
 
+#include <utils/fileutils.h>
+
 #include <QObject>
 #include <QFileSystemModel>
 
@@ -77,7 +79,7 @@ public:
     virtual Core::IDocument *document() const = 0;
     virtual IProjectManager *projectManager() const = 0;
 
-    QString projectFilePath() const;
+    Utils::FileName projectFilePath() const;
 
     bool hasActiveBuildSettings() const;
 
@@ -109,13 +111,13 @@ public:
     // TODO: generalize to find source(s) of generated files?
     virtual QString generatedUiHeader(const QString &formFile) const;
 
-    static QString makeUnique(const QString &preferedName, const QStringList &usedNames);
+    static QString makeUnique(const QString &preferredName, const QStringList &usedNames);
 
     virtual QVariantMap toMap() const;
 
     // The directory that holds the project. This includes the absolute path.
-    QString projectDirectory() const;
-    static QString projectDirectory(const QString &top);
+    Utils::FileName projectDirectory() const;
+    static Utils::FileName projectDirectory(const Utils::FileName &top);
 
     Core::Context projectContext() const;
     Core::Context projectLanguages() const;

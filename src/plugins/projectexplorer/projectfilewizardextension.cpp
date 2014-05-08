@@ -166,7 +166,7 @@ void AddNewProjectNodesVisitor::visitProjectNode(ProjectNode *node)
 // for quick sort and path search, provides operator<() for maps.
 struct FolderEntry {
     FolderEntry() : node(0), priority(-1) {}
-    explicit FolderEntry(FolderNode *node, const QStringList &generatedFiles);
+    explicit FolderEntry(FolderNode *node, const QStringList &generatedFiles, Node *contextNode);
 
     int compare(const FolderEntry &rhs) const;
 
@@ -177,10 +177,10 @@ struct FolderEntry {
     int priority;
 };
 
-FolderEntry::FolderEntry(FolderNode *n, const QStringList &generatedFiles) :
+FolderEntry::FolderEntry(FolderNode *n, const QStringList &generatedFiles, Node *contextNode) :
     node(n)
 {
-    FolderNode::AddNewInformation info = node->addNewInformation(generatedFiles);
+    FolderNode::AddNewInformation info = node->addNewInformation(generatedFiles, contextNode);
     displayName = info.displayName;
     const QFileInfo fi(ProjectExplorerPlugin::pathFor(node));
     baseName = fi.baseName();
@@ -274,20 +274,12 @@ static QList<FolderEntry> findDeployProject(const QList<FolderEntry> &folders,
 // the longest matching path (list containing"/project/subproject1" matching
 // common path "/project/subproject1/newuserpath").
 static int findMatchingProject(const QList<FolderEntry> &projects,
-                               const QString &commonPath,
-                               Node *preferedProjectNode)
+                               const QString &commonPath)
 {
     if (projects.isEmpty() || commonPath.isEmpty())
         return -1;
 
     const int count = projects.size();
-    if (preferedProjectNode) {
-        for (int p = 0; p < count; ++p) {
-            if (projects.at(p).node == preferedProjectNode)
-                return p;
-        }
-    }
-
     int bestMatch = -1;
     int bestMatchLength = 0;
     int bestMatchPriority = -1;
@@ -296,19 +288,16 @@ static int findMatchingProject(const QList<FolderEntry> &projects,
         const FolderEntry &entry = projects.at(p);
         const QString &projectDirectory = entry.directory;
         const int projectDirectorySize = projectDirectory.size();
-        if (entry.priority > bestMatchPriority) {
-            if (commonPath.startsWith(projectDirectory)) {
-                bestMatchPriority = entry.priority;
-                bestMatchLength = projectDirectory.size();
-                bestMatch = p;
-            }
-        } else if (entry.priority == bestMatchPriority) {
-            if (projectDirectorySize > bestMatchLength
-                    && commonPath.startsWith(projectDirectory)) {
-                bestMatchPriority = entry.priority;
-                bestMatchLength = projectDirectory.size();
-                bestMatch = p;
-            }
+        if (!commonPath.startsWith(projectDirectory))
+            continue;
+
+        bool betterMatch = projectDirectorySize > bestMatchLength
+                || (projectDirectorySize == bestMatchLength && entry.priority > bestMatchPriority);
+
+        if (betterMatch) {
+            bestMatchPriority = entry.priority;
+            bestMatchLength = projectDirectory.size();
+            bestMatch = p;
         }
     }
     return bestMatch;
@@ -326,7 +315,7 @@ void ProjectFileWizardExtension::firstExtensionPageShown(
         const QList<GeneratedFile> &files,
         const QVariantMap &extraValues)
 {
-    initProjectChoices(files);
+    initProjectChoices(files, extraValues);
 
     if (debugExtension)
         qDebug() << Q_FUNC_INFO << files.size();
@@ -360,8 +349,7 @@ void ProjectFileWizardExtension::firstExtensionPageShown(
         m_context->page->setAdditionalInfo(text);
         bestProjectIndex = -1;
     } else {
-        bestProjectIndex = findMatchingProject(m_context->projects, m_context->commonDirectory,
-                                               extraValues.value(QLatin1String(Constants::PREFERED_PROJECT_NODE)).value<Node *>());
+        bestProjectIndex = findMatchingProject(m_context->projects, m_context->commonDirectory);
         m_context->page->setNoneLabel(tr("<None>"));
     }
 
@@ -446,7 +434,8 @@ static inline void getProjectChoicesAndToolTips(QStringList *projectChoicesParam
                                                 QStringList *projectToolTipsParam,
                                                 ProjectExplorer::ProjectAction *projectActionParam,
                                                 const QList<GeneratedFile> &generatedFiles,
-                                                ProjectWizardContext *context)
+                                                ProjectWizardContext *context,
+                                                Node *contextNode)
 {
     // Set up project list which remains the same over duration of wizard execution
     // As tooltip, set the directory for disambiguation (should someone have
@@ -462,18 +451,18 @@ static inline void getProjectChoicesAndToolTips(QStringList *projectChoicesParam
     ProjectExplorer::ProjectAction projectAction;
     if (context->wizard->kind()== IWizard::ProjectWizard) {
         const QString projectFilePath = generatedProjectFilePath(generatedFiles);
-        projectAction = ProjectExplorer::AddNewFile;
+        projectAction = ProjectExplorer::AddSubProject;
         foreach (ProjectNode *pn, AddNewProjectNodesVisitor::projectNodes(projectFilePath))
-            entryMap.insert(FolderEntry(pn, QStringList() << projectFilePath), true);
+            entryMap.insert(FolderEntry(pn, QStringList() << projectFilePath, contextNode), true);
 
     } else {
         QStringList filePaths;
         foreach (const GeneratedFile &gf, generatedFiles)
             filePaths << gf.path();
 
-        projectAction = ProjectExplorer::AddSubProject;
+        projectAction = ProjectExplorer::AddNewFile;
         foreach (FolderNode *fn, AddNewFileNodesVisitor::allFolders())
-            entryMap.insert(FolderEntry(fn, filePaths), true);
+            entryMap.insert(FolderEntry(fn, filePaths, contextNode), true);
     }
 
     context->projects.clear();
@@ -491,14 +480,15 @@ static inline void getProjectChoicesAndToolTips(QStringList *projectChoicesParam
     *projectActionParam = projectAction;
 }
 
-void ProjectFileWizardExtension::initProjectChoices(const QList<GeneratedFile> generatedFiles)
+void ProjectFileWizardExtension::initProjectChoices(const QList<GeneratedFile> &generatedFiles, const QVariantMap &extraValues)
 {
     QStringList projectChoices;
     QStringList projectToolTips;
     ProjectExplorer::ProjectAction projectAction;
 
     getProjectChoicesAndToolTips(&projectChoices, &projectToolTips, &projectAction,
-                                 generatedFiles, m_context);
+                                 generatedFiles, m_context,
+                                 extraValues.value(QLatin1String(Constants::PREFERRED_PROJECT_NODE)).value<Node *>());
 
     m_context->page->setProjects(projectChoices);
     m_context->page->setProjectToolTips(projectToolTips);
@@ -542,7 +532,7 @@ bool ProjectFileWizardExtension::processProject(
     FolderNode *folder = m_context->projects.at(folderIndex).node;
     if (m_context->wizard->kind() == IWizard::ProjectWizard) {
         if (!static_cast<ProjectNode *>(folder)->addSubProjects(QStringList(generatedProject))) {
-            *errorMessage = tr("Failed to add subproject '%1'\nto project '%2'.")
+            *errorMessage = tr("Failed to add subproject \"%1\"\nto project \"%2\".")
                             .arg(generatedProject).arg(folder->path());
             return false;
         }
@@ -552,7 +542,7 @@ bool ProjectFileWizardExtension::processProject(
         foreach (const GeneratedFile &generatedFile, files)
             filePaths << generatedFile.path();
         if (!folder->addFiles(filePaths)) {
-            *errorMessage = tr("Failed to add one or more files to project\n'%1' (%2).").
+            *errorMessage = tr("Failed to add one or more files to project\n\"%1\" (%2).").
                     arg(folder->path(), filePaths.join(QString(QLatin1Char(','))));
             return false;
         }
@@ -572,7 +562,7 @@ bool ProjectFileWizardExtension::processVersionControl(const QList<GeneratedFile
     if (!m_context->repositoryExists) {
         QTC_ASSERT(versionControl->supportsOperation(IVersionControl::CreateRepositoryOperation), return false);
         if (!versionControl->vcsCreateRepository(m_context->commonDirectory)) {
-            *errorMessage = tr("A version control system repository could not be created in '%1'.").arg(m_context->commonDirectory);
+            *errorMessage = tr("A version control system repository could not be created in \"%1\".").arg(m_context->commonDirectory);
             return false;
         }
     }
@@ -580,7 +570,7 @@ bool ProjectFileWizardExtension::processVersionControl(const QList<GeneratedFile
     if (versionControl->supportsOperation(IVersionControl::AddOperation)) {
         foreach (const GeneratedFile &generatedFile, files) {
             if (!versionControl->vcsAdd(generatedFile.path())) {
-                *errorMessage = tr("Failed to add '%1' to the version control system.").arg(generatedFile.path());
+                *errorMessage = tr("Failed to add \"%1\" to the version control system.").arg(generatedFile.path());
                 return false;
             }
         }
@@ -640,11 +630,6 @@ void ProjectFileWizardExtension::applyCodeStyle(GeneratedFile *file) const
         }
     }
     file->setContents(doc.toPlainText());
-}
-
-void ProjectFileWizardExtension::hideProjectComboBox()
-{
-    m_context->page->setProjectComoBoxVisible(false);
 }
 
 void ProjectFileWizardExtension::setProjectIndex(int i)

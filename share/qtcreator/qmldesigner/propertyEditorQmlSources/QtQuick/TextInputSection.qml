@@ -37,27 +37,32 @@ Section {
     anchors.right: parent.right
     caption: qsTr("Text Input")
 
+    property bool isTextInput: false
+    id: textInputSection
+
     SectionLayout {
         rows: 4
         columns: 2
 
 
         Label {
+            visible: textInputSection.isTextInput
             text: qsTr("Input mask")
         }
 
         LineEdit {
+            visible: textInputSection.isTextInput
             backendValue: backendValues.inputMask
             Layout.fillWidth: true
         }
 
         Label {
-            visible: showVerticalAlignment
-            text:  qsTr("Echo mode")
+            visible: textInputSection.isTextInput
+            text: qsTr("Echo mode")
         }
 
         ComboBox {
-            visible: showVerticalAlignment
+            visible: textInputSection.isTextInput
             Layout.fillWidth: true
             backendValue: backendValues.echoMode
             scope: "TextInput"
@@ -65,11 +70,13 @@ Section {
         }
 
         Label {
+            visible: textInputSection.isTextInput
             text: qsTr("Pass. char")
             toolTip: qsTr("Character displayed when users enter passwords.")
         }
 
         LineEdit {
+            visible: textInputSection.isTextInput
             backendValue: backendValues.passwordCharacter
             Layout.fillWidth: true
         }

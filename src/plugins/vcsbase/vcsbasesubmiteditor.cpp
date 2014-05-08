@@ -114,7 +114,7 @@ static const char *belongingClassName(const CPlusPlus::Function *function)
     files from the list by pressing unchecking them or diff the selection
     by doubleclicking.
 
-    The action matching the the ids (unless 0) of the parameter struct will be
+    The action matching the ids (unless 0) of the parameter struct will be
     registered with the EditorWidget and submit/diff actions will be added to
     a toolbar.
 
@@ -167,7 +167,7 @@ VcsBaseSubmitEditorPrivate::VcsBaseSubmitEditorPrivate(const VcsBaseSubmitEditor
     m_widget(editorWidget),
     m_toolWidget(0),
     m_parameters(parameters),
-    m_file(new SubmitEditorFile(QLatin1String(parameters->mimeType), q)),
+    m_file(new SubmitEditorFile(parameters, q)),
     m_nickNameDialog(0)
 {
     QCompleter *completer = new QCompleter(q);
@@ -191,7 +191,7 @@ VcsBaseSubmitEditor::VcsBaseSubmitEditor(const VcsBaseSubmitEditorParameters *pa
     const QTextCharFormat tf = fs.toTextCharFormat(TextEditor::C_TEXT);
     descriptionEdit->setFont(tf.font());
     const QTextCharFormat selectionFormat = fs.toTextCharFormat(TextEditor::C_SELECTION);
-    QPalette pal = descriptionEdit->palette();
+    QPalette pal;
     pal.setColor(QPalette::Base, tf.background().color());
     pal.setColor(QPalette::Text, tf.foreground().color());
     pal.setColor(QPalette::Foreground, tf.foreground().color());
@@ -390,11 +390,6 @@ QString VcsBaseSubmitEditor::checkScriptWorkingDirectory() const
 void VcsBaseSubmitEditor::setCheckScriptWorkingDirectory(const QString &s)
 {
     d->m_checkScriptWorkingDirectory = s;
-}
-
-Core::Id VcsBaseSubmitEditor::id() const
-{
-    return d->m_parameters->id;
 }
 
 static QToolBar *createToolBar(const QWidget *someWidget, QAction *submitAction, QAction *diffAction)
@@ -687,19 +682,19 @@ bool VcsBaseSubmitEditor::runSubmitMessageCheckScript(const QString &checkScript
     checkProcess.start(checkScript, QStringList(saver.fileName()));
     checkProcess.closeWriteChannel();
     if (!checkProcess.waitForStarted()) {
-        *errorMessage = tr("The check script '%1' could not be started: %2").arg(checkScript, checkProcess.errorString());
+        *errorMessage = tr("The check script \"%1\" could not be started: %2").arg(checkScript, checkProcess.errorString());
         return false;
     }
     QByteArray stdOutData;
     QByteArray stdErrData;
     if (!SynchronousProcess::readDataFromProcess(checkProcess, 30000, &stdOutData, &stdErrData, false)) {
         SynchronousProcess::stopProcess(checkProcess);
-        *errorMessage = tr("The check script '%1' timed out.").
+        *errorMessage = tr("The check script \"%1\" timed out.").
                         arg(QDir::toNativeSeparators(checkScript));
         return false;
     }
     if (checkProcess.exitStatus() != QProcess::NormalExit) {
-        *errorMessage = tr("The check script '%1' crashed.").
+        *errorMessage = tr("The check script \"%1\" crashed.").
                         arg(QDir::toNativeSeparators(checkScript));
         return false;
     }

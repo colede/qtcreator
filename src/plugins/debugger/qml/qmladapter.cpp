@@ -59,15 +59,18 @@ QmlAdapter::QmlAdapter(DebuggerEngine *engine, QObject *parent)
     connect(&m_connectionTimer, SIGNAL(timeout()), SLOT(checkConnectionState()));
 
     m_conn = new QmlDebugConnection(this);
-    connect(m_conn, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
-            SLOT(connectionStateChanged()));
-    connect(m_conn, SIGNAL(error(QAbstractSocket::SocketError)),
-            SLOT(connectionErrorOccurred(QAbstractSocket::SocketError)));
+    connect(m_conn, SIGNAL(stateMessage(QString)), SLOT(showConnectionStateMessage(QString)));
+    connect(m_conn, SIGNAL(errorMessage(QString)), SLOT(showConnectionErrorMessage(QString)));
+    connect(m_conn, SIGNAL(error(QDebugSupport::Error)),
+            SLOT(connectionErrorOccurred(QDebugSupport::Error)));
+    connect(m_conn, SIGNAL(opened()), &m_connectionTimer, SLOT(stop()));
+    connect(m_conn, SIGNAL(opened()), SIGNAL(connected()));
+    connect(m_conn, SIGNAL(closed()), SIGNAL(disconnected()));
 
     createDebuggerClients();
     m_msgClient = new QDebugMessageClient(m_conn);
-    connect(m_msgClient, SIGNAL(newStatus(QmlDebug::ClientStatus)),
-            this, SLOT(clientStatusChanged(QmlDebug::ClientStatus)));
+    connect(m_msgClient, SIGNAL(newState(QmlDebug::QmlDebugClient::State)),
+            this, SLOT(clientStateChanged(QmlDebug::QmlDebugClient::State)));
 
 }
 
@@ -77,12 +80,9 @@ QmlAdapter::~QmlAdapter()
 
 void QmlAdapter::beginConnectionTcp(const QString &address, quint16 port)
 {
-    if (m_engine.isNull()
-            || (m_conn && m_conn->state() != QAbstractSocket::UnconnectedState))
+    if (m_engine.isNull() || (m_conn && m_conn->isOpen()))
         return;
 
-    showConnectionStatusMessage(tr("Connecting to debug server %1:%2").arg(address).arg(
-                                    QString::number(port)));
     m_conn->connectToHost(address, port);
 
     //A timeout to check the connection state
@@ -99,76 +99,38 @@ void QmlAdapter::closeConnection()
     }
 }
 
-void QmlAdapter::connectionErrorOccurred(QAbstractSocket::SocketError socketError)
+void QmlAdapter::connectionErrorOccurred(QDebugSupport::Error error)
 {
-    showConnectionStatusMessage(tr("Error: (%1) %2", "%1=error code, %2=error message")
-                                .arg(socketError).arg(m_conn->errorString()));
-
     // this is only an error if we are already connected and something goes wrong.
     if (isConnected()) {
-        emit connectionError(socketError);
+        emit connectionError(error);
     } else {
         m_connectionTimer.stop();
         emit connectionStartupFailed();
     }
 }
 
-void QmlAdapter::clientStatusChanged(QmlDebug::ClientStatus status)
+void QmlAdapter::clientStateChanged(QmlDebugClient::State state)
 {
     QString serviceName;
     float version = 0;
     if (QmlDebugClient *client = qobject_cast<QmlDebugClient*>(sender())) {
         serviceName = client->name();
-        version = client->serviceVersion();
+        version = client->remoteVersion();
     }
 
-    logServiceStatusChange(serviceName, version, status);
+    logServiceStateChange(serviceName, version, state);
 }
 
-void QmlAdapter::debugClientStatusChanged(QmlDebug::ClientStatus status)
+void QmlAdapter::debugClientStateChanged(QmlDebugClient::State state)
 {
-    if (status != QmlDebug::Enabled)
+    if (state != QmlDebug::QmlDebugClient::Enabled)
         return;
     QmlDebugClient *client = qobject_cast<QmlDebugClient*>(sender());
     QTC_ASSERT(client, return);
 
     m_qmlClient = qobject_cast<BaseQmlDebuggerClient *>(client);
     m_qmlClient->startSession();
-}
-
-void QmlAdapter::connectionStateChanged()
-{
-    switch (m_conn->state()) {
-    case QAbstractSocket::UnconnectedState:
-    {
-        showConnectionStatusMessage(tr("Disconnected.") + QLatin1String("\n\n"));
-        emit disconnected();
-
-        break;
-    }
-    case QAbstractSocket::HostLookupState:
-        showConnectionStatusMessage(tr("Resolving host."));
-        break;
-    case QAbstractSocket::ConnectingState:
-        showConnectionStatusMessage(tr("Connecting to debug server."));
-        break;
-    case QAbstractSocket::ConnectedState:
-    {
-        showConnectionStatusMessage(tr("Connected.") + QLatin1Char('\n'));
-
-        m_connectionTimer.stop();
-
-        //reloadEngines();
-        emit connected();
-        break;
-    }
-    case QAbstractSocket::ClosingState:
-        showConnectionStatusMessage(tr("Closing."));
-        break;
-    case QAbstractSocket::BoundState:
-    case QAbstractSocket::ListeningState:
-        break;
-    }
 }
 
 void QmlAdapter::checkConnectionState()
@@ -181,22 +143,22 @@ void QmlAdapter::checkConnectionState()
 
 bool QmlAdapter::isConnected() const
 {
-    return m_conn && m_qmlClient && m_conn->state() == QAbstractSocket::ConnectedState;
+    return m_conn && m_qmlClient && m_conn->isOpen();
 }
 
 void QmlAdapter::createDebuggerClients()
 {
     QScriptDebuggerClient *debugClient1 = new QScriptDebuggerClient(m_conn);
-    connect(debugClient1, SIGNAL(newStatus(QmlDebug::ClientStatus)),
-            this, SLOT(clientStatusChanged(QmlDebug::ClientStatus)));
-    connect(debugClient1, SIGNAL(newStatus(QmlDebug::ClientStatus)),
-            this, SLOT(debugClientStatusChanged(QmlDebug::ClientStatus)));
+    connect(debugClient1, SIGNAL(newState(QmlDebug::QmlDebugClient::State)),
+            this, SLOT(clientStateChanged(QmlDebug::QmlDebugClient::State)));
+    connect(debugClient1, SIGNAL(newState(QmlDebug::QmlDebugClient::State)),
+            this, SLOT(debugClientStateChanged(QmlDebug::QmlDebugClient::State)));
 
     QmlV8DebuggerClient *debugClient2 = new QmlV8DebuggerClient(m_conn);
-    connect(debugClient2, SIGNAL(newStatus(QmlDebug::ClientStatus)),
-            this, SLOT(clientStatusChanged(QmlDebug::ClientStatus)));
-    connect(debugClient2, SIGNAL(newStatus(QmlDebug::ClientStatus)),
-            this, SLOT(debugClientStatusChanged(QmlDebug::ClientStatus)));
+    connect(debugClient2, SIGNAL(newState(QmlDebug::QmlDebugClient::State)),
+            this, SLOT(clientStateChanged(QmlDebug::QmlDebugClient::State)));
+    connect(debugClient2, SIGNAL(newState(QmlDebug::QmlDebugClient::State)),
+            this, SLOT(debugClientStateChanged(QmlDebug::QmlDebugClient::State)));
 
     m_debugClients.insert(debugClient1->name(),debugClient1);
     m_debugClients.insert(debugClient2->name(),debugClient2);
@@ -215,7 +177,7 @@ DebuggerEngine *QmlAdapter::debuggerEngine() const
     return m_engine.data();
 }
 
-void QmlAdapter::showConnectionStatusMessage(const QString &message)
+void QmlAdapter::showConnectionStateMessage(const QString &message)
 {
     if (!m_engine.isNull())
         m_engine.data()->showMessage(_("QML Debugger: ") + message, LogStatus);
@@ -242,23 +204,23 @@ QDebugMessageClient *QmlAdapter::messageClient() const
     return m_msgClient;
 }
 
-void QmlAdapter::logServiceStatusChange(const QString &service, float version,
-                                        QmlDebug::ClientStatus newStatus)
+void QmlAdapter::logServiceStateChange(const QString &service, float version,
+                                        QmlDebug::QmlDebugClient::State newState)
 {
-    switch (newStatus) {
-    case QmlDebug::Unavailable: {
-        showConnectionStatusMessage(_("Status of '%1' Version: %2 changed to 'unavailable'.").
+    switch (newState) {
+    case QmlDebug::QmlDebugClient::Unavailable: {
+        showConnectionStateMessage(_("Status of \"%1\" Version: %2 changed to 'unavailable'.").
                                     arg(service).arg(QString::number(version)));
         break;
     }
-    case QmlDebug::Enabled: {
-        showConnectionStatusMessage(_("Status of '%1' Version: %2 changed to 'enabled'.").
+    case QmlDebug::QmlDebugClient::Enabled: {
+        showConnectionStateMessage(_("Status of \"%1\" Version: %2 changed to 'enabled'.").
                                     arg(service).arg(QString::number(version)));
         break;
     }
 
-    case QmlDebug::NotConnected: {
-        showConnectionStatusMessage(_("Status of '%1' Version: %2 changed to 'not connected'.").
+    case QmlDebug::QmlDebugClient::NotConnected: {
+        showConnectionStateMessage(_("Status of \"%1\" Version: %2 changed to 'not connected'.").
                                     arg(service).arg(QString::number(version)));
         break;
     }

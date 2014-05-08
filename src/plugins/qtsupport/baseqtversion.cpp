@@ -48,6 +48,7 @@
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
 #include <utils/synchronousprocess.h>
+#include <utils/winutils.h>
 
 #include <QDir>
 #include <QUrl>
@@ -314,10 +315,10 @@ QList<Task> BaseQtVersion::validateKit(const Kit *k)
         if (!fullMatch) {
             if (!fuzzyMatch)
                 message = QCoreApplication::translate("BaseQtVersion",
-                                                      "The compiler '%1' (%2) cannot produce code for the Qt version '%3' (%4).");
+                                                      "The compiler \"%1\" (%2) cannot produce code for the Qt version \"%3\" (%4).");
             else
                 message = QCoreApplication::translate("BaseQtVersion",
-                                                      "The compiler '%1' (%2) may not produce code compatible with the Qt version '%3' (%4).");
+                                                      "The compiler \"%1\" (%2) may not produce code compatible with the Qt version \"%3\" (%4).");
             message = message.arg(tc->displayName(), targetAbi.toString(),
                                   version->displayName(), qtAbiString);
             result << Task(fuzzyMatch ? Task::Warning : Task::Error, message, FileName(), -1,
@@ -1171,7 +1172,7 @@ QList<Task> BaseQtVersion::reportIssuesImpl(const QString &proFile, const QStrin
     const QChar slash = QLatin1Char('/');
     if (!sourcePath.endsWith(slash))
         sourcePath.append(slash);
-    if ((tmpBuildDir.startsWith(sourcePath)) && (tmpBuildDir != sourcePath)) {
+    if ((tmpBuildDir.startsWith(sourcePath)) && (tmpBuildDir != sourcePath) && qtVersion() < QtVersionNumber(5, 2, 0)) {
         const QString msg = QCoreApplication::translate("QmakeProjectManager::QtVersion",
                                                         "Qmake does not support build directories below the source directory.");
         results.append(Task(Task::Warning, msg, FileName(), -1,
@@ -1206,21 +1207,24 @@ static QByteArray runQmakeQuery(const FileName &binary, const Environment &env,
 
     const int timeOutMS = 30000; // Might be slow on some machines.
 
+    // Prevent e.g. qmake 4.x on MinGW to show annoying errors about missing dll's.
+    WindowsCrashDialogBlocker crashDialogBlocker;
+
     QProcess process;
     process.setEnvironment(env.toStringList());
     process.start(binary.toString(), QStringList(QLatin1String("-query")), QIODevice::ReadOnly);
 
     if (!process.waitForStarted()) {
-        *error = QCoreApplication::translate("QtVersion", "Cannot start '%1': %2").arg(binary.toUserOutput()).arg(process.errorString());
+        *error = QCoreApplication::translate("QtVersion", "Cannot start \"%1\": %2").arg(binary.toUserOutput()).arg(process.errorString());
         return QByteArray();
     }
     if (!process.waitForFinished(timeOutMS)) {
         SynchronousProcess::stopProcess(process);
-        *error = QCoreApplication::translate("QtVersion", "Timeout running '%1' (%2 ms).").arg(binary.toUserOutput()).arg(timeOutMS);
+        *error = QCoreApplication::translate("QtVersion", "Timeout running \"%1\" (%2 ms).").arg(binary.toUserOutput()).arg(timeOutMS);
         return QByteArray();
     }
     if (process.exitStatus() != QProcess::NormalExit) {
-        *error = QCoreApplication::translate("QtVersion", "'%1' crashed.").arg(binary.toUserOutput());
+        *error = QCoreApplication::translate("QtVersion", "\"%1\" crashed.").arg(binary.toUserOutput());
         return QByteArray();
     }
 
@@ -1237,7 +1241,7 @@ bool BaseQtVersion::queryQMakeVariables(const FileName &binary, const Environmen
 
     const QFileInfo qmake = binary.toFileInfo();
     if (!qmake.exists() || !qmake.isExecutable() || qmake.isDir()) {
-        *error = QCoreApplication::translate("QtVersion", "qmake '%1' is not an executable.").arg(binary.toUserOutput());
+        *error = QCoreApplication::translate("QtVersion", "qmake \"%1\" is not an executable.").arg(binary.toUserOutput());
         return false;
     }
 
@@ -1448,7 +1452,7 @@ void BaseQtVersion::buildDebuggingHelper(ToolChain *tc, int tools)
     buildTask->showOutputOnError(true);
 
     QFuture<void> task = QtConcurrent::run(&QtSupport::DebuggingHelperBuildTask::run, buildTask);
-    const QString taskName = QCoreApplication::translate("BaseQtVersion", "Building helpers");
+    const QString taskName = QCoreApplication::translate("BaseQtVersion", "Building Debugging Helpers");
     ProgressManager::addTask(task, taskName, "Qt::BuildHelpers");
 }
 

@@ -160,16 +160,19 @@ LookupContext::LookupContext(Document::Ptr thisDocument,
     : _expressionDocument(Document::create(QLatin1String("<LookupContext>")))
     , _thisDocument(thisDocument)
     , _snapshot(snapshot)
+    , _bindings(new CreateBindings(thisDocument, snapshot))
     , m_expandTemplates(false)
 {
 }
 
 LookupContext::LookupContext(Document::Ptr expressionDocument,
                              Document::Ptr thisDocument,
-                             const Snapshot &snapshot)
+                             const Snapshot &snapshot,
+                             QSharedPointer<CreateBindings> bindings)
     : _expressionDocument(expressionDocument)
     , _thisDocument(thisDocument)
     , _snapshot(snapshot)
+    , _bindings(bindings)
     , m_expandTemplates(false)
 {
 }
@@ -276,21 +279,6 @@ QList<LookupItem> LookupContext::lookupByUsing(const Name *name, Scope *scope) c
     return candidates;
 }
 
-
-QSharedPointer<CreateBindings> LookupContext::bindings() const
-{
-    if (! _bindings) {
-        _bindings = QSharedPointer<CreateBindings>(new CreateBindings(_thisDocument, _snapshot));
-        _bindings->setExpandTemplates(m_expandTemplates);
-    }
-
-    return _bindings;
-}
-
-void LookupContext::setBindings(QSharedPointer<CreateBindings> bindings)
-{
-    _bindings = bindings;
-}
 
 Document::Ptr LookupContext::expressionDocument() const
 { return _expressionDocument; }
@@ -533,6 +521,7 @@ ClassOrNamespace::ClassOrNamespace(CreateBindings *factory, ClassOrNamespace *pa
     , _name(0)
 #endif // DEBUG_LOOKUP
 {
+    Q_ASSERT(factory);
 }
 
 ClassOrNamespace::~ClassOrNamespace()
@@ -680,6 +669,15 @@ void ClassOrNamespace::lookup_helper(const Name *name, ClassOrNamespace *binding
 
         foreach (ClassOrNamespace *u, binding->usings())
             lookup_helper(name, u, result, processed, binding->_templateId);
+
+        Anonymouses::const_iterator cit = binding->_anonymouses.begin();
+        Anonymouses::const_iterator citEnd = binding->_anonymouses.end();
+        for (; cit != citEnd; ++cit) {
+            const AnonymousNameId *anonymousNameId = cit.key();
+            ClassOrNamespace *a = cit.value();
+            if (!binding->_declaredOrTypedefedAnonymouses.contains(anonymousNameId))
+                lookup_helper(name, a, result, processed, binding->_templateId);
+        }
     }
 }
 
@@ -1060,6 +1058,10 @@ ClassOrNamespace *ClassOrNamespace::nestedType(const Name *name, ClassOrNamespac
         instantiation->_name = templId;
 #endif // DEBUG_LOOKUP
         instantiation->_templateId = templId;
+
+        while (!origin->_symbols.isEmpty() && origin->_symbols[0]->isBlock())
+            origin = origin->parent();
+
         instantiation->_instantiationOrigin = origin;
 
         // The instantiation should have all symbols, enums, and usings from the reference.
@@ -1579,7 +1581,12 @@ bool CreateBindings::visit(Declaration *decl)
             }
         }
     }
-
+    if (Class *clazz = decl->type()->asClassType()) {
+        if (const Name *name = clazz->name()) {
+            if (const AnonymousNameId *anonymousNameId = name->asAnonymousNameId())
+                _currentClassOrNamespace->_declaredOrTypedefedAnonymouses.insert(anonymousNameId);
+        }
+    }
     return false;
 }
 
@@ -1613,7 +1620,8 @@ bool CreateBindings::visit(Block *block)
     // nested ClassOrNamespaces)
     if (! _currentClassOrNamespace->_blocks.empty()
             || ! _currentClassOrNamespace->_classOrNamespaces.empty()
-            || ! _currentClassOrNamespace->_enums.empty()) {
+            || ! _currentClassOrNamespace->_enums.empty()
+            || ! _currentClassOrNamespace->_anonymouses.empty()) {
         previous->_blocks[block] = binding;
         _entities.append(binding);
     } else {

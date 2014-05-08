@@ -47,6 +47,10 @@ Canvas {
     onYChanged: requestPaint()
 
     onPaint: {
+        if (context === null)
+            return; // canvas isn't ready
+
+        context.reset();
         drawBackgroundBars( context, region );
 
         var totalTime = endTime - startTime;
@@ -126,7 +130,7 @@ Canvas {
         // bottom
         if (height > labels.height - y) {
             context.fillStyle = "#f5f5f5";
-            context.fillRect(0, labels.height - y, width, Math.min(height - labels.height + y, labelsTail.height));
+            context.fillRect(0, labels.height - y, width, height - labels.height + y);
         }
     }
 }

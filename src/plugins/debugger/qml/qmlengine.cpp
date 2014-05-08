@@ -266,8 +266,8 @@ QmlEngine::QmlEngine(const DebuggerStartParameters &startParameters, DebuggerEng
     if (masterEngine)
         setMasterEngine(masterEngine);
 
-    connect(&m_adapter, SIGNAL(connectionError(QAbstractSocket::SocketError)),
-        SLOT(connectionError(QAbstractSocket::SocketError)));
+    connect(&m_adapter, SIGNAL(connectionError(QDebugSupport::Error)),
+        SLOT(connectionError(QDebugSupport::Error)));
     connect(&m_adapter, SIGNAL(serviceConnectionError(QString)),
         SLOT(serviceConnectionError(QString)));
     connect(&m_adapter, SIGNAL(connected()),
@@ -457,16 +457,22 @@ void QmlEngine::connectionStartupFailed()
 
 void QmlEngine::appStartupFailed(const QString &errorMessage)
 {
-    QMessageBox *infoBox = new QMessageBox(Core::ICore::mainWindow());
-    infoBox->setIcon(QMessageBox::Critical);
-    infoBox->setWindowTitle(tr("Qt Creator"));
-    infoBox->setText(tr("Could not connect to the in-process QML debugger."
-                        "\n%1").arg(errorMessage));
-    infoBox->setStandardButtons(QMessageBox::Ok | QMessageBox::Help);
-    infoBox->setDefaultButton(QMessageBox::Ok);
-    connect(infoBox, SIGNAL(finished(int)),
-            this, SLOT(errorMessageBoxFinished(int)));
-    infoBox->show();
+    QString error = tr("Could not connect to the in-process QML debugger."
+                       "\n%1").arg(errorMessage);
+
+    if (isMasterEngine()) {
+        QMessageBox *infoBox = new QMessageBox(Core::ICore::mainWindow());
+        infoBox->setIcon(QMessageBox::Critical);
+        infoBox->setWindowTitle(tr("Qt Creator"));
+        infoBox->setText(error);
+        infoBox->setStandardButtons(QMessageBox::Ok | QMessageBox::Help);
+        infoBox->setDefaultButton(QMessageBox::Ok);
+        connect(infoBox, SIGNAL(finished(int)),
+                this, SLOT(errorMessageBoxFinished(int)));
+        infoBox->show();
+    } else {
+        showMessage(error, StatusBar);
+    }
 
     notifyEngineRunFailed();
 }
@@ -493,9 +499,9 @@ void QmlEngine::errorMessageBoxFinished(int result)
     }
 }
 
-void QmlEngine::connectionError(QAbstractSocket::SocketError socketError)
+void QmlEngine::connectionError(QDebugSupport::Error error)
 {
-    if (socketError == QAbstractSocket::RemoteHostClosedError)
+    if (error == QDebugSupport::RemoteClosedConnectionError)
         showMessage(tr("QML Debugger: Remote host closed connection."), StatusBar);
 
     if (!isSlaveEngine()) { // normal flow for slave engine when gdb exits
@@ -506,7 +512,7 @@ void QmlEngine::connectionError(QAbstractSocket::SocketError socketError)
 
 void QmlEngine::serviceConnectionError(const QString &serviceName)
 {
-    showMessage(tr("QML Debugger: Could not connect to service '%1'.")
+    showMessage(tr("QML Debugger: Could not connect to service \"%1\".")
         .arg(serviceName), StatusBar);
 }
 

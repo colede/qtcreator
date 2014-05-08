@@ -223,7 +223,7 @@ LocatorWidget::LocatorWidget(Locator *qop) :
     m_completionList(new CompletionList(this)),
     m_filterMenu(new QMenu(this)),
     m_refreshAction(new QAction(tr("Refresh"), this)),
-    m_configureAction(new QAction(tr("Configure..."), this)),
+    m_configureAction(new QAction(Core::ICore::msgShowOptionsDialog(), this)),
     m_fileLineEdit(new Utils::FancyLineEdit),
     m_updateRequested(false),
     m_acceptRequested(false),
@@ -235,7 +235,7 @@ LocatorWidget::LocatorWidget(Locator *qop) :
     setFocusProxy(m_fileLineEdit);
     setWindowTitle(tr("Locate..."));
     resize(200, 90);
-    QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    QSizePolicy sizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
     sizePolicy.setHorizontalStretch(0);
     sizePolicy.setVerticalStretch(0);
     setSizePolicy(sizePolicy);

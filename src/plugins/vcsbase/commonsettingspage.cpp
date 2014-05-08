@@ -33,8 +33,11 @@
 #include "ui_commonsettingspage.h"
 
 #include <coreplugin/icore.h>
+#include <coreplugin/vcsmanager.h>
 
-#include <QDebug>
+#include <utils/environment.h>
+#include <utils/hostosinfo.h>
+
 #include <QCoreApplication>
 
 namespace VcsBase {
@@ -55,11 +58,16 @@ CommonSettingsWidget::CommonSettingsWidget(QWidget *parent) :
     m_ui->nickNameMailMapChooser->setHistoryCompleter(QLatin1String("Vcs.NickMap.History"));
     m_ui->sshPromptChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
     m_ui->sshPromptChooser->setHistoryCompleter(QLatin1String("Vcs.SshPrompt.History"));
-    const QString patchToolTip = tr("Command used for reverting diff chunks");
+    const QString patchToolTip = tr("Command used for reverting diff chunks.");
     m_ui->patchCommandLabel->setToolTip(patchToolTip);
     m_ui->patchChooser->setToolTip(patchToolTip);
     m_ui->patchChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
     m_ui->patchChooser->setHistoryCompleter(QLatin1String("Vcs.PatchCommand.History"));
+
+    updatePath();
+
+    connect(Core::VcsManager::instance(), SIGNAL(configurationChanged(const IVersionControl*)),
+            this, SLOT(updatePath()));
 }
 
 CommonSettingsWidget::~CommonSettingsWidget()
@@ -103,6 +111,15 @@ QString CommonSettingsWidget::searchKeyWordMatchString() const
             ;
     rc.remove(QLatin1Char('&')); // Strip buddy markers.
     return rc;
+}
+
+void CommonSettingsWidget::updatePath()
+{
+    Utils::Environment env = Utils::Environment::systemEnvironment();
+    QStringList toAdd = Core::VcsManager::additionalToolsPath();
+    env.appendOrSetPath(toAdd.join(QString(Utils::HostOsInfo::pathListSeparator())));
+    m_ui->patchChooser->setEnvironment(env);
+    m_ui->sshPromptChooser->setEnvironment(env);
 }
 
 // --------------- VcsBaseSettingsPage

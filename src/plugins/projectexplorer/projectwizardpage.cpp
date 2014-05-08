@@ -54,6 +54,7 @@ ProjectWizardPage::ProjectWizardPage(QWidget *parent) :
     m_ui(new Ui::WizardPage)
 {
     m_ui->setupUi(this);
+    m_ui->vcsManageButton->setText(Core::ICore::msgShowOptionsDialog());
     connect(m_ui->projectComboBox, SIGNAL(currentIndexChanged(int)),
             this, SLOT(slotProjectChanged(int)));
     connect(m_ui->vcsManageButton, SIGNAL(clicked()), this, SLOT(slotManageVcs()));
@@ -83,12 +84,6 @@ void ProjectWizardPage::setAddingSubProject(bool addingSubProject)
     m_ui->projectLabel->setText(addingSubProject ?
                                     tr("Add as a subproject to project:")
                                   : tr("Add to &project:"));
-}
-
-void ProjectWizardPage::setProjectComoBoxVisible(bool visible)
-{
-    m_ui->projectComboBox->setVisible(visible);
-    m_ui->projectLabel->setVisible(visible);
 }
 
 int ProjectWizardPage::currentProjectIndex() const

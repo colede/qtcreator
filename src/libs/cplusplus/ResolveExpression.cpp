@@ -866,8 +866,12 @@ ClassOrNamespace *ResolveExpression::findClass(const FullySpecifiedType &origina
     FullySpecifiedType ty = originalTy.simplified();
     ClassOrNamespace *binding = 0;
 
-    if (Class *klass = ty->asClassType())
-        binding = _context.lookupType(klass, enclosingTemplateInstantiation);
+    if (Class *klass = ty->asClassType()) {
+        if (scope->isBlock())
+            binding = _context.lookupType(klass->name(), scope, enclosingTemplateInstantiation);
+        if (!binding)
+            binding = _context.lookupType(klass, enclosingTemplateInstantiation);
+    }
 
     else if (NamedType *namedTy = ty->asNamedType())
         binding = _context.lookupType(namedTy->name(), scope, enclosingTemplateInstantiation);
@@ -977,7 +981,18 @@ private:
                 visited.insert(declaration);
 
                 // continue working with the typedefed type and scope
-                *type = declaration->type();
+                if (type->type()->isPointerType()) {
+                    *type = FullySpecifiedType(
+                            _context.bindings()->control()->pointerType(declaration->type()));
+                } else if (type->type()->isReferenceType()) {
+                    *type = FullySpecifiedType(
+                            _context.bindings()->control()->referenceType(
+                                declaration->type(),
+                                declaration->type()->asReferenceType()->isRvalueReference()));
+                } else {
+                    *type = declaration->type();
+                }
+
                 *scope = it.scope();
                 _binding = it.binding();
                 foundTypedef = true;
@@ -992,18 +1007,6 @@ private:
     // binding has to be remembered in case of resolving typedefs for templates
     ClassOrNamespace *_binding;
 };
-
-static bool isTypeTypedefed(const FullySpecifiedType &originalTy,
-                            const FullySpecifiedType &typedefedTy)
-{
-    return ! originalTy.isEqualTo(typedefedTy);
-}
-
-static bool areOriginalAndTypedefedTypePointer(const FullySpecifiedType &originalTy,
-                                               const FullySpecifiedType &typedefedTy)
-{
-    return originalTy->isPointerType() && typedefedTy->isPointerType();
-}
 
 ClassOrNamespace *ResolveExpression::baseExpression(const QList<LookupItem> &baseResults,
                                                     int accessOp,
@@ -1035,20 +1038,7 @@ ClassOrNamespace *ResolveExpression::baseExpression(const QList<LookupItem> &bas
 #endif // DEBUG_LOOKUP
 
         if (accessOp == T_ARROW) {
-            if (PointerType *ptrTy = originalType->asPointerType()) {
-                FullySpecifiedType type = ptrTy->elementType();
-                if (! ty->isPointerType())
-                    type = ty;
-
-                if (ClassOrNamespace *binding
-                        = findClassForTemplateParameterInExpressionScope(r.binding(),
-                                                                         type)) {
-                    return binding;
-                }
-                if (ClassOrNamespace *binding = findClass(type, scope))
-                    return binding;
-
-            } else if (PointerType *ptrTy = ty->asPointerType()) {
+            if (PointerType *ptrTy = ty->asPointerType()) {
                 FullySpecifiedType type = ptrTy->elementType();
                 if (ClassOrNamespace *binding
                         = findClassForTemplateParameterInExpressionScope(r.binding(),
@@ -1118,12 +1108,9 @@ ClassOrNamespace *ResolveExpression::baseExpression(const QList<LookupItem> &bas
             }
         } else if (accessOp == T_DOT) {
             if (replacedDotOperator) {
-                if (! isTypeTypedefed(originalType, ty)
-                        || ! areOriginalAndTypedefedTypePointer(originalType, ty)) {
-                    *replacedDotOperator = originalType->isPointerType() || ty->isPointerType();
-                    if (PointerType *ptrTy = ty->asPointerType())
-                        ty = ptrTy->elementType();
-                }
+                *replacedDotOperator = originalType->isPointerType() || ty->isPointerType();
+                if (PointerType *ptrTy = ty->asPointerType())
+                    ty = ptrTy->elementType();
             }
 
             if (ClassOrNamespace *binding
@@ -1150,7 +1137,7 @@ ClassOrNamespace *ResolveExpression::findClassForTemplateParameterInExpressionSc
         ClassOrNamespace *resultBinding,
         const FullySpecifiedType &ty) const
 {
-    if (resultBinding && resultBinding->instantiationOrigin()) {
+    if (resultBinding) {
         if (ClassOrNamespace *origin = resultBinding->instantiationOrigin()) {
             foreach (Symbol *originSymbol, origin->symbols()) {
                 if (Scope *originScope = originSymbol->asScope()) {

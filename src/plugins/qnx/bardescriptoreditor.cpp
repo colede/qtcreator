@@ -122,11 +122,6 @@ Core::IDocument *BarDescriptorEditor::document()
     return m_file;
 }
 
-Core::Id BarDescriptorEditor::id() const
-{
-    return Constants::QNX_BAR_DESCRIPTOR_EDITOR_ID;
-}
-
 QWidget *BarDescriptorEditor::toolBar()
 {
     return m_toolBar;

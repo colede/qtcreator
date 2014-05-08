@@ -34,6 +34,7 @@
 #include "iosrunconfiguration.h"
 #include "iosruncontrol.h"
 #include "iosmanager.h"
+#include "iosanalyzesupport.h"
 
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -126,7 +127,7 @@ bool IosRunConfigurationFactory::canHandle(Target *t) const
     return IosManager::supportsIos(t);
 }
 
-QList<RunConfiguration *> IosRunConfigurationFactory::runConfigurationsForNode(Target *t, ProjectExplorer::Node *n)
+QList<RunConfiguration *> IosRunConfigurationFactory::runConfigurationsForNode(Target *t, const Node *n)
 {
     QList<ProjectExplorer::RunConfiguration *> result;
     foreach (ProjectExplorer::RunConfiguration *rc, t->runConfigurations())
@@ -155,7 +156,8 @@ IosRunControlFactory::IosRunControlFactory(QObject *parent)
 bool IosRunControlFactory::canRun(RunConfiguration *runConfiguration,
                 ProjectExplorer::RunMode mode) const
 {
-    if (mode != NormalRunMode && mode != DebugRunMode)
+    if (mode != NormalRunMode && mode != DebugRunMode && mode != QmlProfilerRunMode
+            && mode != DebugRunModeWithBreakOnMain)
         return false;
     return qobject_cast<IosRunConfiguration *>(runConfiguration);
 }
@@ -170,12 +172,14 @@ RunControl *IosRunControlFactory::create(RunConfiguration *runConfig,
     Core::Id devId = ProjectExplorer::DeviceKitInformation::deviceId(rc->target()->kit());
     // The device can only run an application at a time, if an app is running stop it.
     if (m_activeRunControls.contains(devId)) {
-        QPointer<ProjectExplorer::RunControl> activeRunControl = m_activeRunControls[devId];
-        activeRunControl->stop();
+        if (QPointer<ProjectExplorer::RunControl> activeRunControl = m_activeRunControls[devId])
+            activeRunControl->stop();
         m_activeRunControls.remove(devId);
     }
     if (mode == NormalRunMode)
         res = new Ios::Internal::IosRunControl(rc);
+    else if (mode == QmlProfilerRunMode)
+        res = IosAnalyzeSupport::createAnalyzeRunControl(rc, errorMessage);
     else
         res = IosDebugSupport::createDebugRunControl(rc, errorMessage);
     if (devId.isValid())

@@ -290,7 +290,7 @@ bool VcsBaseClient::vcsFullySynchronousExec(const QString &workingDir,
     vcsProcess.start(binary, args);
 
     if (!vcsProcess.waitForStarted()) {
-        ::vcsOutputWindow()->appendError(tr("Unable to start process '%1': %2")
+        ::vcsOutputWindow()->appendError(tr("Unable to start process \"%1\": %2")
                                          .arg(QDir::toNativeSeparators(binary), vcsProcess.errorString()));
         return false;
     }
@@ -325,7 +325,7 @@ Utils::SynchronousProcessResponse VcsBaseClient::vcsSynchronousExec(
 }
 
 void VcsBaseClient::annotate(const QString &workingDir, const QString &file,
-                             const QString revision /* = QString() */,
+                             const QString &revision /* = QString() */,
                              int lineNumber /* = -1 */,
                              const QStringList &extraOptions)
 {
@@ -574,8 +574,12 @@ VcsBase::VcsBaseEditorWidget *VcsBaseClient::createVcsEditor(Core::Id kind, QStr
         outputEditor->document()->setContents(progressMsg.toUtf8());
         baseEditor = VcsBase::VcsBaseEditorWidget::getVcsBaseEditor(outputEditor);
         QTC_ASSERT(baseEditor, return 0);
+        Core::EditorManager::activateEditor(outputEditor);
     } else {
-        outputEditor = Core::EditorManager::openEditorWithContents(kind, &title, progressMsg.toUtf8());
+        outputEditor
+                = Core::EditorManager::openEditorWithContents(kind, &title, progressMsg.toUtf8(),
+                                                              (Core::EditorManager::OpenInOtherSplit
+                                                               | Core::EditorManager::NoNewSplits));
         outputEditor->document()->setProperty(registerDynamicProperty, dynamicPropertyValue);
         baseEditor = VcsBase::VcsBaseEditorWidget::getVcsBaseEditor(outputEditor);
         connect(baseEditor, SIGNAL(annotateRevisionRequested(QString,QString,QString,int)),
@@ -587,7 +591,6 @@ VcsBase::VcsBaseEditorWidget *VcsBaseClient::createVcsEditor(Core::Id kind, QStr
     }
 
     baseEditor->setForceReadOnly(true);
-    Core::EditorManager::activateEditor(outputEditor);
     return baseEditor;
 }
 

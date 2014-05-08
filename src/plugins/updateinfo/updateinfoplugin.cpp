@@ -120,7 +120,7 @@ bool UpdateInfoPlugin::initialize(const QStringList & /* arguments */, QString *
     }
 
     if (!QFile::exists(d->updaterProgram)) {
-        *errorMessage = tr("Could not find maintenance tool at '%1'. Check your installation.")
+        *errorMessage = tr("Could not find maintenance tool at \"%1\". Check your installation.")
             .arg(d->updaterProgram);
         return false;
     }
@@ -150,6 +150,7 @@ void UpdateInfoPlugin::saveSettings()
 {
     SettingsDatabase *settings = ICore::settingsDatabase();
     if (settings) {
+        settings->beginTransaction();
         settings->beginGroup(QLatin1String("Updater"));
         settings->setValue(QLatin1String("Application"), d->updaterProgram);
         settings->setValue(QLatin1String("LastDayChecked"), d->m_lastDayChecked);
@@ -157,6 +158,7 @@ void UpdateInfoPlugin::saveSettings()
         settings->setValue(QLatin1String("CheckOnlyArgument"), d->updaterCheckOnlyArgument);
         settings->setValue(QLatin1String("ScheduledUpdateTime"), d->m_scheduledUpdateTime);
         settings->endGroup();
+        settings->endTransaction();
     }
 }
 

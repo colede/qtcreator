@@ -66,6 +66,7 @@ ResourceEditorDocument::ResourceEditorDocument(ResourceEditorW *parent) :
     m_blockDirtyChanged(false),
     m_parent(parent)
 {
+    setId(ResourceEditor::Constants::RESOURCEEDITOR_ID);
     setFilePath(parent->m_resourceEditor->fileName());
     if (debugResourceEditorW)
         qDebug() <<  "ResourceEditorFile::ResourceEditorFile()";
@@ -215,11 +216,6 @@ void ResourceEditorDocument::setFilePath(const QString &newName)
 void ResourceEditorDocument::setBlockDirtyChanged(bool value)
 {
     m_blockDirtyChanged = value;
-}
-
-Core::Id ResourceEditorW::id() const
-{
-    return Core::Id(ResourceEditor::Constants::RESOURCEEDITOR_ID);
 }
 
 QWidget *ResourceEditorW::toolBar()
